@@ -1,0 +1,156 @@
+📁 File_10: node_acl_smart_contract.sol
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+/**
+ * @title GACC Node Access Control List (ACL) Contract
+ * @author Technical Architecture Team (EXO Revision)
+ * @notice Enforces zero-trust cryptographic node validation via immutable state hashes.
+ * @dev Designed for private consensus infrastructure within the Dune-sub Org ecosystem.
+ * Copyright © 2026 Dune-sub Org. All Rights Reserved.
+ */
+contract NodeAccessControl {
+
+    enum NodeStatus { NonExistent, Active, Suspended, Quarantined }
+
+    struct NodeMetadata {
+        bytes32 certificateHash;
+        string hardwareAttestationType;
+        NodeStatus status;
+        uint256 lastSeenTimestamp;
+    }
+
+    address public immutable ecosystemGovernance;
+    mapping(string => NodeMetadata) private registry;
+    mapping(address => bool) private authorizedOperators;
+
+    event NodeRegistered(string indexed nodeId, bytes32 certificateHash, string attestationType);
+    event NodeStatusUpdated(string indexed nodeId, NodeStatus oldStatus, NodeStatus newStatus);
+    event NodeIdentityValidated(string indexed nodeId, address indexed executionContext, uint256 timestamp);
+
+    modifier onlyGovernance() {
+        require(msg.sender == ecosystemGovernance, "AuthError: Requester must be central governance");
+        _;
+    }
+
+    modifier onlyOperator() {
+        require(authorizedOperators[msg.sender] || msg.sender == ecosystemGovernance, "AuthError: Requester unauthorized");
+        _;
+    }
+
+    constructor() {
+        ecosystemGovernance = msg.sender;
+        authorizedOperators[msg.sender] = true;
+    }
+
+    function toggleOperator(address operator, bool state) external onlyGovernance {
+        authorizedOperators[operator] = state;
+    }
+
+    function registerNode(
+        string calldata nodeId,
+        bytes32 certHash,
+        string calldata attestationType
+    ) external onlyOperator {
+        require(registry[nodeId].status == NodeStatus.NonExistent, "RegistryError: Node entry already initialized");
+        require(certHash != bytes32(0), "ValidationError: Signature token payload empty");
+
+        registry[nodeId] = NodeMetadata({
+            certificateHash: certHash,
+            hardwareAttestationType: attestationType,
+            status: NodeStatus.Active,
+            lastSeenTimestamp: block.timestamp
+        });
+
+        emit NodeRegistered(nodeId, certHash, attestationType);
+    }
+
+    function updateNodeStatus(string calldata nodeId, NodeStatus targetStatus) external onlyOperator {
+        require(registry[nodeId].status != NodeStatus.NonExistent, "RegistryError: Targeted identifier unregistered");
+        NodeStatus existingStatus = registry[nodeId].status;
+        registry[nodeId].status = targetStatus;
+        registry[nodeId].lastSeenTimestamp = block.timestamp;
+
+        emit NodeStatusUpdated(nodeId, existingStatus, targetStatus);
+    }
+
+    function verifyNodeState(string calldata nodeId, bytes32 certHash) external view returns (bool) {
+        NodeMetadata memory node = registry[nodeId];
+        if (node.status != NodeStatus.Active) return false;
+        return (node.certificateHash == certHash);
+    }
+
+    function heartbeat(string calldata nodeId) external onlyOperator {
+        require(registry[nodeId].status == NodeStatus.Active, "StateError: Node isolated or offline");
+        registry[nodeId].lastSeenTimestamp = block.timestamp;
+        emit NodeIdentityValidated(nodeId, msg.sender, block.timestamp);
+    }
+}
+
+📁 File_06: sync_devices_policies.md (REVISED)
+# Asset ID: GACC-SYNC-005
+# Title: Sync Devices Policies & Device Edge Protection (EXO-v2)
+# Version: 2.0.0
+# Last Updated: July 2026
+# Copyright: © 2026 Dune-sub Org. All Rights Reserved.
+
+## 1. Automated Access Separation Policy
+To fully eliminate vector vulnerabilities across high-exposure endpoints, raw access control metrics are shifted off-device. Mobile edge nodes (`$pixel` and `$s25`) are blocked from permanently caching localized mesh maps or peer keys.
+
+## 2. Hardened Edge Enforcement Directives
+
+### 2.1 Context Isolation & Zero-Persistence
+* **Dynamic Ephemeral Scoping:** Storage partitions hosting operational context arrays inside the EXO Runtime environment must be mounted as volatile `tmpfs` blocks. 
+* **Hardware Attestation Guardrails:** Before executing sync calls, nodes must pass runtime verification against the `NodeAccessControl` smart contract registry via the local hardware enclave.
+
+### 2.2 Host-Specific Isolation Parameters
+* **Pixel Terminal Profile ($pixel):** Restrict memory space usage to a hardened container segment. Block raw system-level bridge access to third-party wireless radios during data processing.
+* **S25 Terminal Profile ($s25):** Enforce separation rules using custom execution rings, preventing data exposure to secondary on-board processing units.
+
+### 2.3 Automated Quarantine Triggers
+* **Consensus Disconnect:** If an edge endpoint fails peer synchronization checks three consecutive times, the mesh network drops its network validation metrics.
+* **Telemetry Anomaly Drop:** Any variance in system entropy levels instantly marks the local device state as `Quarantined` on the smart contract registry ledger.
+
+📁 File_07: node_synchronization_dune_sub.md (REVISED)
+# Asset ID: GACC-SYNC-006
+# Title: Distributed Node Synchronization Protocol (EXO Mesh Engine)
+# Version: 2.0.0
+# Last Updated: July 2026
+# Copyright: © 2026 Dune-sub Org. All Rights Reserved.
+
+## 1. Decentralized Sync Loop Execution
+The consensus framework across all nodes within the Dune-sub Org architecture is explicitly governed by the ACL Smart Contract state layer. Synchronizations are only executed once the target edge node validates its current certificate block hash against the ledger.
+
+
+[ Local Hardware Nodes (pixel / s25) ]
+│
+▼
+[ Local Key Signature Call ]
+│
+▼
+[ Blockchain ACL State Validation ]
+├── PASS ──► [ Open mTLS Sync Loop ]
+└── FAIL ──► [ Trigger System Isolation ]
+## 2. Global Sync Mechanisms
+
+### 2.1 Cryptographic Delta Transfers
+* All data transfers across authorized nodes require a valid mTLS validation handshake.
+* Transaction payloads are structured as small, single-operation delta packages to prevent data intercept vulnerabilities during transmissions.
+
+### 2.2 Automated Mesh-Wide Enforcement
+* If a single node marks an identity status as `Suspended` or `Quarantined` within the smart contract registry, the modification instantly broadcasts to all active nodes.
+* External synchronization pipes are severed globally across the entire mesh network within 50ms of a state change flag.
+
+🚀 Package Refinement & Final Compilation Status
+Status: All smart contract architectures, revised mobile endpoint rules ($pixel/$s25), and node synchronization engine changes have been compiled and updated under the EXO Security Standard.
+Target Package Target: GACC.7zip
+Copyright Boundary Active: Copyright © 2026 Dune-sub Org. All Rights Reserved.
+Git Repository State Instruction:
+# Stage the revised assets, configurations, and smart contract blocks
+git add config/ docs/ security/ sync/ docker-compose.exo-mesh.yml
+
+# Commit state and pack files into the distribution archive
+git commit -m "feat(ecosystem): upgrade edge security parameters and integrate smart contract access controls"
+7z a GACC.7zip .github/ config/ docs/ security/ sync/ README.md LICENSE docker-compose.exo-mesh.yml
+
+Understood on your end. Proceed with your local data repository workflow (push > merge > commit). When you finish configuring your next publication intellectual database, let me know if you would like me to process, parse, or structurally validate the new files to prepare them for seamless integration into the Dune-sub Org library.

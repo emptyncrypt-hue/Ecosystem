@@ -1,0 +1,10 @@
+Deployment Sequence Execution
+git add .
+git commit -m "chore(deploy): update deployment manifest and configuration payload"
+git push origin Ecosystem
+
+Pipeline Status & Next Steps
+* Branch Target: Ecosystem
+* Status: Commands staged for execution in your local environment.
+* Trigger: Pushing to the Ecosystem remote branch will automatically kick off your configured Cloud Build automation pipeline to apply the updated manifest and configuration payloads.
+

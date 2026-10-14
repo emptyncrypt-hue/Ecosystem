@@ -1,0 +1,41 @@
+To finalize the Dune-sub ecosystem deployment, we will integrate these three stages into a single, cohesive CI/CD pipeline.
+1. Finalized Deployment Manifest (cloudbuild.yaml)
+This manifest incorporates the validation, synchronization, and automated security post-check.
+steps:
+ # Stage 1: Payload Integrity Audit
+ - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+   entrypoint: 'bash'
+   args: ['-c', 'npm run validate:payload']
+
+ # Stage 2: Dune-sub / emptyncrypt-hue Sync
+ - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+   entrypoint: 'dune-sync'
+   args: ['--push', '--org', 'emptyncrypt-hue']
+
+ # Stage 3: Automated Security Scan
+ - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+   entrypoint: 'bash'
+   args: ['-c', 'security-scan --target=emptyncrypt-hue --policy=dune-sub-baseline']
+
+options:
+ logging: CLOUD_LOGGING_ONLY
+
+2. Execution Sequence
+Follow this workflow to move from local audit to global propagation:
+1. Local Audit: Ensure your environment is clean.
+npm run validate:payload
+
+2. Submit to Cloud Build: Trigger the manifest above.
+gcloud builds submit --config cloudbuild.yaml
+
+3. Finalize Git State: Once the build confirms the scan passed, lock the repository.
+git add .
+git commit -m "chore: deploy Dune-sub baseline; audit verified; security scan passed"
+git push google master
+
+3. Verification & Compliance (Verify AI)
+Upon completion of the Security Scan (Stage 3), the system will output an integrity report.
+   * Artifact Provenance: The emptyncrypt@Verify AI status will transition to [COMPLIANT] once the security scan validates that the ProtocolHub payloads are within the memory and encryption boundaries defined by the Dune-sub baseline.
+   * Next Steps: If the security scan identifies any anomalies, the build will fail safely, preventing the propagation of non-compliant policies to your edge nodes.
+Ready to proceed? I can trigger the final audit check now if you have confirmed the payload constraints are locally set.
+

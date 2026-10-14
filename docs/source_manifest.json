@@ -1,0 +1,277 @@
+{
+  "schema_version": 1,
+  "target_repository": "emptyncrypt-hue/Ecosystem",
+  "normalization": "Document text exports and source snippets use UTF-8 and LF line breaks. Native document layout and styling are not reproduced.",
+  "status": "Source-document deployment and synchronization claims are historical assertions and have not been independently verified. Extracted examples retain their original content.",
+  "documents": [
+    {
+      "path": "docs/archive/acl_source.txt",
+      "source_id": "1atQVZSdAapq16okzf2vAncbA8-cZ0ncSrCesxoIhsFs",
+      "source_url": "https://docs.google.com/document/d/1atQVZSdAapq16okzf2vAncbA8-cZ0ncSrCesxoIhsFs",
+      "section": "Complete native-document text",
+      "source_title": "$yes [Smart Contract ACL - business ready revision];\n$update devices policies;\n$sync all nodes [Dune-sub Org];\n#Update Ecosystem && Copyrights; return ++};\n/Meantime I’ll work on:\nNext publication intellectual database to Git repository : push > merge > commit/",
+      "revision_id": "AHj4eMR_4J2kKc1XhxAfXIzjb9YM5g9BtMv7A7A2LjGw5pyW8jkIXGa-2nVhPjX_qU5b0Z-JZ27hd0f6MqtpTrLOfEAhXlKCcJ6_NYkiig",
+      "caveats": [
+        "Native Google Docs paragraph boundaries and soft line breaks are normalized to LF. Plain text preserves wording; native formatting, table geometry, and list bullets are not reconstructed.",
+        "Deployment, synchronization, identity-validation, and runtime-status claims are source-document assertions, not independently verified execution evidence."
+      ],
+      "size_bytes": 7768,
+      "sha256": "690531cab10b367a5edc10e9c3dc17f536a952a0440790bad71c6c859dc66344"
+    },
+    {
+      "path": "docs/archive/active_configuration.txt",
+      "source_id": "1VDnNF6amuakldy8Vyy4BLPt-7VQU2BFDpSRRI6rv5bE",
+      "source_title": "{#Active Configuration []}\nVoid\n{@Ecosystem Device...",
+      "source_url": "https://docs.google.com/document/d/1VDnNF6amuakldy8Vyy4BLPt-7VQU2BFDpSRRI6rv5bE/edit",
+      "modified_time": "2026-07-11T02:07:54.162Z",
+      "section": "Complete document text",
+      "size_bytes": 2948,
+      "sha256": "7889525a778b4d0a5f44e1e746aa3459924d14509e8ee249b7f97f8760ff7f3f"
+    },
+    {
+      "path": "docs/archive/blueprint_license_terms.txt",
+      "source_id": "159O1ia_JfNwm-fEq_dazRd-ZFhwD0M35dPUoDxI5ubY",
+      "source_title": "Blueprint license terms\nBlueprint executable bound...",
+      "source_url": "https://docs.google.com/document/d/159O1ia_JfNwm-fEq_dazRd-ZFhwD0M35dPUoDxI5ubY/edit",
+      "modified_time": "2026-07-07T08:08:11.322Z",
+      "section": "Complete document text",
+      "size_bytes": 4366,
+      "sha256": "160991bd8386f7cd3838b2c186d4842ba56174227eb76359436dd370c3937df8"
+    },
+    {
+      "path": "docs/archive/build_and_deploy_archive.txt",
+      "source_id": "1py3raULb01-SNt0sG-O5kchiDU1IxO8udVPJyf2DB4g",
+      "source_title": "#Build and Deploy;",
+      "source_url": "https://docs.google.com/document/d/1py3raULb01-SNt0sG-O5kchiDU1IxO8udVPJyf2DB4g/edit",
+      "size_bytes": 1228,
+      "sha256": "c47601ffbf00a33068ade787d8b44ac4eb022807812237e684bd78277d40557e"
+    },
+    {
+      "path": "docs/archive/crypto_encryption.txt",
+      "source_id": "1ZLbcMRqaz-pO_GhbXNlIYh7kBPyTF1Nnmzo7cbCMScw",
+      "source_url": "https://docs.google.com/document/d/1ZLbcMRqaz-pO_GhbXNlIYh7kBPyTF1Nnmzo7cbCMScw",
+      "section": "Complete native-document text",
+      "source_title": "{#Cryptographic Security Encryption Enforcement to...",
+      "revision_id": "AHj4eMTjuJ8TWpEMOTNT4_KcLFJ0xjSWS8tUfDKMvVsJPOoGaP_kf3M8fcGpF-kkxkWBWXQzjb1mdwKHg2oLmT-77xQsPsU2mvmLz_qekQ",
+      "caveats": [
+        "Native Google Docs paragraph boundaries and soft line breaks are normalized to LF. Plain text preserves wording; native formatting, table geometry, and list bullets are not reconstructed.",
+        "Deployment, synchronization, identity-validation, and runtime-status claims are source-document assertions, not independently verified execution evidence."
+      ],
+      "size_bytes": 4883,
+      "sha256": "c7428436f28c81a04d393888339d2334a6833116af409b7dda653e413aa6a6ae"
+    },
+    {
+      "path": "docs/archive/crypto_update.txt",
+      "source_id": "1U_Mu-ZkPXtEfUBtpZiTkqnnmY_NJTCFsZTneP3Z8Ssc",
+      "source_url": "https://docs.google.com/document/d/1U_Mu-ZkPXtEfUBtpZiTkqnnmY_NJTCFsZTneP3Z8Ssc",
+      "section": "Complete native-document text",
+      "source_title": "#Cryptographic Security Enforcers Update {# Ecosys...",
+      "revision_id": "AHj4eMTVzpJWEqH3mcktrIPhH7WQgqJW_Hw8tZ0zHP6QI511os5Ks_500WJAd-6x6fa_qO5_LuvOwId8iyfZdOM3iLuO89CV8K74d4VJNQ",
+      "caveats": [
+        "Native Google Docs paragraph boundaries and soft line breaks are normalized to LF. Plain text preserves wording; native formatting, table geometry, and list bullets are not reconstructed.",
+        "Deployment, synchronization, identity-validation, and runtime-status claims are source-document assertions, not independently verified execution evidence."
+      ],
+      "size_bytes": 3384,
+      "sha256": "38ee16107fd952b20f5c81750fcf269dd7c5484c34ad5580769fc6e5d2ea4022"
+    },
+    {
+      "path": "docs/archive/deployment_architecture_blueprint.txt",
+      "source_id": "1-Dypm6YSEW9nLXisLBEd9nQ0TqZpuvm4XXnQ1jjRB_4",
+      "source_title": "Deployment Architecture Blueprint",
+      "source_url": "https://docs.google.com/document/d/1-Dypm6YSEW9nLXisLBEd9nQ0TqZpuvm4XXnQ1jjRB_4/edit",
+      "modified_time": "2026-07-12T14:17:26.641Z",
+      "section": "Complete document text",
+      "size_bytes": 3470,
+      "sha256": "663703a588b519431c76a236603a3a03bccc3ceca3a3b091f045435beb583bac"
+    },
+    {
+      "path": "docs/archive/deployment_git_commands.txt",
+      "source_id": "18sX26R5lyarUDv3DFZDumHqCze7YYlBOqNao8F_Gv3g",
+      "source_title": "Git add .\ngit commit -m \"chore(deploy): update dep...",
+      "source_url": "https://docs.google.com/document/d/18sX26R5lyarUDv3DFZDumHqCze7YYlBOqNao8F_Gv3g/edit",
+      "size_bytes": 459,
+      "sha256": "bad10a45b324ba7326d12087295d4fbd26be19f71cfc871a5e9e529a5f035e5a"
+    },
+    {
+      "path": "docs/archive/deployment_manifest.txt",
+      "source_id": "12SKtGDXHOKYk4XZepaHM-vMWOq6SwFGuc3OYEqQGV-I",
+      "source_title": "{$Finalizing the deployment manifest for the ⁠clou...",
+      "source_url": "https://docs.google.com/document/d/12SKtGDXHOKYk4XZepaHM-vMWOq6SwFGuc3OYEqQGV-I/edit",
+      "size_bytes": 1967,
+      "sha256": "860d46838c9c4ca3cb3b09fee9f6aadd72121edb3df902da554ff1e36d533583"
+    },
+    {
+      "path": "docs/archive/device_governance_irs_update.txt",
+      "source_id": "171qWXqVnobMTdS1lM3ryzyfQqyXbGQQGJaHqOSCI3f4",
+      "source_title": "{\n  \"framework\": \"Ecosystem-Device-Governance-IRS\"...",
+      "source_url": "https://docs.google.com/document/d/171qWXqVnobMTdS1lM3ryzyfQqyXbGQQGJaHqOSCI3f4/edit",
+      "modified_time": "2026-07-14T16:19:30.787Z",
+      "section": "Complete document text",
+      "size_bytes": 4575,
+      "sha256": "f44c4450545ab2ce55aba34ebd17e44132dfbf1dc6f2da4842bd319fb4cc05e2"
+    },
+    {
+      "path": "docs/archive/ecosystem_update_archive.txt",
+      "source_id": "1eKTW425QaMfWCXKR20uKa2NS7pbDW5O6lnw9mPCD1Yc",
+      "source_title": "#Update Ecosystem emptyncrypt@Workspace  emptyncry...",
+      "source_url": "https://docs.google.com/document/d/1eKTW425QaMfWCXKR20uKa2NS7pbDW5O6lnw9mPCD1Yc/edit",
+      "size_bytes": 1676,
+      "sha256": "811c3e7cbc5ed58c2c4fd1b0694a6a3a8b09f7c36ca14413d505ab03257e5d30"
+    },
+    {
+      "path": "docs/archive/evaluation_api_response_archive.txt",
+      "source_id": "1LJW5MeRwMUja14k2bFfETOyQsFLmf70JSeCzXWM0qTI",
+      "source_title": "Curl -X POST http://localhost:3000/api/v1/evaluate...",
+      "source_url": "https://docs.google.com/document/d/1LJW5MeRwMUja14k2bFfETOyQsFLmf70JSeCzXWM0qTI/edit",
+      "size_bytes": 1791,
+      "sha256": "8c598865a5a6af407bd55e3170badc22e075dee9cd8267dc9c19560ee5866e5d"
+    },
+    {
+      "path": "docs/archive/framework_handbook.txt",
+      "source_id": "1-JZHzK4FrWSoo40K5YYEOWqQyjZnEFAUqjjA5LA7WcM",
+      "source_title": "Framework Hanbook by Plamen Mihaylov",
+      "source_url": "https://docs.google.com/document/d/1-JZHzK4FrWSoo40K5YYEOWqQyjZnEFAUqjjA5LA7WcM/edit",
+      "modified_time": "2026-07-12T15:07:06.248Z",
+      "section": "Complete document text",
+      "size_bytes": 30178,
+      "sha256": "5415de34758ddf91c5e94b29aacca2fd7dbcf54d06c662afb6dba23cf6ca5124"
+    },
+    {
+      "path": "docs/archive/gacc_business_readiness.txt",
+      "source_id": "1DpKM3U4hzpjULi5NPZB2eM7HMJPmT0GMPqDLnAQIOrg",
+      "source_title": "{$Implement Business Readiness Solution (@GACC.7zi...",
+      "source_url": "https://docs.google.com/document/d/1DpKM3U4hzpjULi5NPZB2eM7HMJPmT0GMPqDLnAQIOrg/edit",
+      "size_bytes": 2589,
+      "sha256": "4876a959926f9ce09400b5f6667f7fd755390710b81f47f5aee72d5399564524"
+    },
+    {
+      "path": "docs/archive/gacc_repository_packaging.txt",
+      "source_id": "18noyFtWacc7uHeIfx8MVAKc0besZQDIbZJkl3djTO-g",
+      "source_title": "git init\ngit add .\ngit commit -m \"feat(gacc): initialize repo structure with exo-revision core files and validation pipelines\"\n7z a GACC.7zip .github/ config/ docs/ security/ sync/ README.md LICENSE\n",
+      "source_url": "https://docs.google.com/document/d/18noyFtWacc7uHeIfx8MVAKc0besZQDIbZJkl3djTO-g/edit",
+      "size_bytes": 1818,
+      "sha256": "177700a3a723aef89710a5a20e517dc9d11bf12002ae17a254a04c2a4e2aea6d"
+    },
+    {
+      "path": "docs/archive/github_repository_blueprint.txt",
+      "source_id": "1vZfQehjVUJBtSPvzLzPzYkVF0Hfndb-s5OnNqzsP_ps",
+      "source_title": "Yes also GitHub repository-ready content;",
+      "source_url": "https://docs.google.com/document/d/1vZfQehjVUJBtSPvzLzPzYkVF0Hfndb-s5OnNqzsP_ps/edit",
+      "modified_time": "2026-07-08T16:14:43.525Z",
+      "section": "Complete document text",
+      "size_bytes": 5177,
+      "sha256": "5bace39c90cc9c3c23a78d3e6ebf10ab15632395832b94a08125f032d36aef72"
+    },
+    {
+      "path": "docs/archive/mdm_uem_model.txt",
+      "source_id": "1-weF3Ic_iGhnueqJu8cNvFfb2AUfTU0S_M9pHUl4t5w",
+      "source_title": "MDM/UEM model",
+      "source_url": "https://docs.google.com/document/d/1-weF3Ic_iGhnueqJu8cNvFfb2AUfTU0S_M9pHUl4t5w/edit",
+      "size_bytes": 10834,
+      "sha256": "353bf87c503ec723f3771f94f9ce670a97ad021adde375f550b69baa96dce100"
+    },
+    {
+      "path": "docs/archive/protocolhub_payload_sync.txt",
+      "source_id": "1YVWv2sq0WNd_HIKa-pVXHlsoMm3WhE21Kk3y91eKRbE",
+      "source_title": "{#Sync Device Policy:#ProtocolHub payload}",
+      "source_url": "https://docs.google.com/document/d/1YVWv2sq0WNd_HIKa-pVXHlsoMm3WhE21Kk3y91eKRbE/edit",
+      "size_bytes": 2211,
+      "sha256": "b39a3320ef992a411e717317fbbd8c1ab1b11906452411403d129f4ad3bac6fb"
+    },
+    {
+      "path": "docs/archive/subscriptions_devices.txt",
+      "source_id": "1LpC3UJwfst2mHlOsteE_eif2780TX6TvPkXMzfMcK5s",
+      "source_url": "https://docs.google.com/document/d/1LpC3UJwfst2mHlOsteE_eif2780TX6TvPkXMzfMcK5s",
+      "section": "Complete native-document text",
+      "source_title": "{$update subscriptions \n$sync devices\n$encryption ...",
+      "revision_id": "AHj4eMQa5Fvq3jfphD8hAmfMx3nOac3k2TuCEmZWzuCzare7aJMkHnd2--CUukVCXFVtkiPPqT_G-SeNM4r3xs_G0a04LzhHITyADOBxCw",
+      "caveats": [
+        "Native Google Docs paragraph boundaries and soft line breaks are normalized to LF. Plain text preserves wording; native formatting, table geometry, and list bullets are not reconstructed.",
+        "Deployment, synchronization, identity-validation, and runtime-status claims are source-document assertions, not independently verified execution evidence."
+      ],
+      "size_bytes": 3042,
+      "sha256": "b3147adaa7997cc7237c77840cacaa80b2e1ddbd6cced644c0f98e3b226e39e2"
+    }
+  ],
+  "source_files": [
+    {
+      "path": "config/require_cmek_drives.tf",
+      "source_id": "1ZLbcMRqaz-pO_GhbXNlIYh7kBPyTF1Nnmzo7cbCMScw",
+      "source_url": "https://docs.google.com/document/d/1ZLbcMRqaz-pO_GhbXNlIYh7kBPyTF1Nnmzo7cbCMScw",
+      "section": "2.1 Storage Array Re-Attestation & Policy Patching",
+      "source_title": "{#Cryptographic Security Encryption Enforcement to...",
+      "revision_id": "AHj4eMTjuJ8TWpEMOTNT4_KcLFJ0xjSWS8tUfDKMvVsJPOoGaP_kf3M8fcGpF-kkxkWBWXQzjb1mdwKHg2oLmT-77xQsPsU2mvmLz_qekQ",
+      "caveats": [
+        "Exact illustrative snippet with Google Docs soft line breaks normalized to LF.",
+        "No provider declaration, required-provider version, project/organization context, variable definitions, or deployment prerequisites are supplied in the source.",
+        "The snippet describes a network organization security policy rule as CMEK storage enforcement. Provider-schema and policy-effect validity are unverified; do not treat this snippet as a validated deployment configuration."
+      ],
+      "size_bytes": 605,
+      "sha256": "ecd981741ca6ac584819a68b2612fc44e1f7315f974463be9d371463202e52c9"
+    },
+    {
+      "path": "contracts/node_acl_smart_contract.sol",
+      "source_id": "1atQVZSdAapq16okzf2vAncbA8-cZ0ncSrCesxoIhsFs",
+      "source_url": "https://docs.google.com/document/d/1atQVZSdAapq16okzf2vAncbA8-cZ0ncSrCesxoIhsFs",
+      "section": "File_10: node_acl_smart_contract.sol",
+      "source_title": "$yes [Smart Contract ACL - business ready revision];\n$update devices policies;\n$sync all nodes [Dune-sub Org];\n#Update Ecosystem && Copyrights; return ++};\n/Meantime I’ll work on:\nNext publication intellectual database to Git repository : push > merge > commit/",
+      "revision_id": "AHj4eMR_4J2kKc1XhxAfXIzjb9YM5g9BtMv7A7A2LjGw5pyW8jkIXGa-2nVhPjX_qU5b0Z-JZ27hd0f6MqtpTrLOfEAhXlKCcJ6_NYkiig",
+      "caveats": [
+        "Exact contract text with Google Docs soft line breaks normalized to LF.",
+        "The source contains an MIT SPDX identifier and a Dune-sub Org all-rights-reserved notice; both are preserved.",
+        "Source compares a supplied certificate hash against operator-controlled registry state. It does not implement hardware attestation, certificate-signature verification, mTLS synchronization, or mesh-wide quarantine broadcasting."
+      ],
+      "size_bytes": 3453,
+      "sha256": "d4b99c831c66e42237aeeaedf61d1c03ef495b5d2c1fe81ef2706151cbe2aba2"
+    },
+    {
+      "path": "examples/config/gacc.gitignore",
+      "section": "1. Immediate Next Step: Create a .gitignore",
+      "caveats": [
+        "Copied verbatim from the supplied document after newline normalization.",
+        "Example only; the GACC.7zip archive was referenced but no actual archive was found in connected Drive."
+      ],
+      "source_id": "18noyFtWacc7uHeIfx8MVAKc0besZQDIbZJkl3djTO-g",
+      "source_title": "git init\ngit add .\ngit commit -m \"feat(gacc): initialize repo structure with exo-revision core files and validation pipelines\"\n7z a GACC.7zip .github/ config/ docs/ security/ sync/ README.md LICENSE\n",
+      "source_url": "https://docs.google.com/document/d/18noyFtWacc7uHeIfx8MVAKc0besZQDIbZJkl3djTO-g/edit",
+      "size_bytes": 188,
+      "sha256": "c88ad28eb1c2127020f9ac0863438625708d6f17da7d8d134612b21995ebad18"
+    },
+    {
+      "path": "examples/deployment/cloudbuild.yaml",
+      "section": "1. Finalized Deployment Manifest (cloudbuild.yaml)",
+      "caveats": [
+        "Copied verbatim from the supplied document after newline normalization.",
+        "Archived as an example; no active CI/CD workflow is configured.",
+        "The referenced dune-sync, security-scan, and npm validate:payload implementations are not present in the discovered source."
+      ],
+      "source_id": "12SKtGDXHOKYk4XZepaHM-vMWOq6SwFGuc3OYEqQGV-I",
+      "source_title": "{$Finalizing the deployment manifest for the ⁠clou...",
+      "source_url": "https://docs.google.com/document/d/12SKtGDXHOKYk4XZepaHM-vMWOq6SwFGuc3OYEqQGV-I/edit",
+      "size_bytes": 569,
+      "sha256": "f23d699820552f729f201f2823ddc88492b0797c82c53010284779b2395a842a"
+    },
+    {
+      "path": "examples/exo-sync-validation.yml.example",
+      "source_id": "1vZfQehjVUJBtSPvzLzPzYkVF0Hfndb-s5OnNqzsP_ps",
+      "source_url": "https://docs.google.com/document/d/1vZfQehjVUJBtSPvzLzPzYkVF0Hfndb-s5OnNqzsP_ps/edit",
+      "section": ".github/workflows/exo-sync-validation.yml",
+      "caveats": [
+        "Archived workflow example; original indentation, JSON schema/data references and job inputs require review before activation."
+      ],
+      "size_bytes": 901,
+      "sha256": "193ed3f7c43da701418e188098f187cfce640b70c26cf58193906ef114380aa8"
+    },
+    {
+      "path": "scripts/generate_blueprint.py",
+      "source_id": "1-JZHzK4FrWSoo40K5YYEOWqQyjZnEFAUqjjA5LA7WcM",
+      "source_url": "https://docs.google.com/document/d/1-JZHzK4FrWSoo40K5YYEOWqQyjZnEFAUqjjA5LA7WcM/edit",
+      "section": "Python DOCX blueprint generator",
+      "caveats": [
+        "Requires python-docx and the original /mnt/data output directory; extracted unchanged."
+      ],
+      "size_bytes": 1775,
+      "sha256": "4ba2f6a1f634949c6f5fb09d3366f08894a36d98814fad47f13da43b59aa26f7"
+    }
+  ]
+}

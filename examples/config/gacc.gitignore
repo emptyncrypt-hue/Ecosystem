@@ -1,0 +1,11 @@
+# Ignore compressed archive backups
+GACC.7zip
+
+# Ignore local system/OS overhead files
+.DS_Store
+Thumbs.db
+
+# Ignore local environment/secrets if any exist in config/
+config/.env
+*.local
+

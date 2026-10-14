@@ -1,0 +1,19 @@
+steps:
+ # Stage 1: Payload Integrity Audit
+ - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+   entrypoint: 'bash'
+   args: ['-c', 'npm run validate:payload']
+
+ # Stage 2: Dune-sub / emptyncrypt-hue Sync
+ - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+   entrypoint: 'dune-sync'
+   args: ['--push', '--org', 'emptyncrypt-hue']
+
+ # Stage 3: Automated Security Scan
+ - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+   entrypoint: 'bash'
+   args: ['-c', 'security-scan --target=emptyncrypt-hue --policy=dune-sub-baseline']
+
+options:
+ logging: CLOUD_LOGGING_ONLY
+

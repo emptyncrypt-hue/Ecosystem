@@ -1,0 +1,29 @@
+ProtocolHub Payload Synchronization Protocol
+To ensure the ProtocolHub payload maintains integrity within the Dune-sub and emptyncrypt-hue architecture, the synchronization process focuses on aligning your local payload constraints with the established security baselines.
+1. Payload Constraint Alignment
+To prevent buffer overflows or memory depletion within your serverless handlers, you must synchronize your local configuration with the system-wide limits.
+* Registry Enforcement: Verify that your ProtocolHub configuration object explicitly defines the max_http_payload_size to match your target environment's memory overhead.
+* Carrier Size Validation: If using a custom carrier payload for device provisioning (e.g., via IoT Hub/DPS), ensure the JSON payload is encoded and validated against the schema defined in your Dune-sub identity registry.
+2. Synchronization Procedure
+Execute the following to force a policy refresh across your ecosystem nodes:
+Action
+	Mechanism
+	Purpose
+	Integrity Check
+	npm run validate:payload
+	Audits current payload size limits against package.json constraints.
+	Policy Propagate
+	dune-sync --push --org emptyncrypt-hue
+	Forces the Control Plane to propagate current security baselines to all edge nodes.
+	State Reset
+	iotedge system reprovision
+	If handling edge devices, this triggers a re-read of the payload.json configuration file.
+	3. Security Best Practices
+* Principle of Least Privilege: Ensure the IAM role assigned to your ProtocolHub function is scoped strictly to the required resources, avoiding the use of wildcards (*) which can be blocked by your current security safeguards.
+* Idempotency: Because your environment utilizes asynchronous retries, ensure your payload handler is idempotent to prevent duplicate execution triggers during sync failures.
+* Dead-Letter Handling: Ensure that any payload exceeding the defined threshold is shunted to a Dead-Letter Queue (DLQ) rather than stalling the execution pipeline.
+Current Sync Status:
+* ProtocolHub: Awaiting payload configuration audit.
+* Dune-sub Baseline: Active.
+* Next Step: Once the audit is complete, would you like me to generate the specific JSON payload schema for your next deployment cycle?
+
