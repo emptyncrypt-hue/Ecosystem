@@ -238,7 +238,7 @@
       "sha256": "c88ad28eb1c2127020f9ac0863438625708d6f17da7d8d134612b21995ebad18"
     },
     {
-      "path": "examples/deployment/cloudbuild.yaml",
+      "path": "examples/deployment/cloudbuild.yml",
       "section": "1. Finalized Deployment Manifest (cloudbuild.yaml)",
       "caveats": [
         "Copied verbatim from the supplied document after newline normalization.",

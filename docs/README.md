@@ -35,7 +35,7 @@ Each archive preserves the available document text. The [source manifest](source
 | [config/require_cmek_drives.tf](../config/require_cmek_drives.tf) | 2.1 Storage Array Re-Attestation & Policy Patching |
 | [contracts/node_acl_smart_contract.sol](../contracts/node_acl_smart_contract.sol) | File_10: node_acl_smart_contract.sol |
 | [examples/config/gacc.gitignore](../examples/config/gacc.gitignore) | 1. Immediate Next Step: Create a .gitignore |
-| [examples/deployment/cloudbuild.yaml](../examples/deployment/cloudbuild.yaml) | 1. Finalized Deployment Manifest (cloudbuild.yaml) |
+| [examples/deployment/cloudbuild.yml](../examples/deployment/cloudbuild.yml) | 1. Finalized Deployment Manifest (cloudbuild.yaml) |
 | [examples/exo-sync-validation.yml.example](../examples/exo-sync-validation.yml.example) | .github/workflows/exo-sync-validation.yml |
 | [scripts/generate_blueprint.py](../scripts/generate_blueprint.py) | Python DOCX blueprint generator |
 
