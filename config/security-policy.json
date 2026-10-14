@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "name": "dune-sub-baseline",
+  "target": "emptyncrypt-hue",
+  "maxFileBytes": 5242880,
+  "excludedDirectories": [".git", "node_modules", "dist", "generated", ".terraform", "__pycache__"]
+}

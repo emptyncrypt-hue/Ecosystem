@@ -4,7 +4,7 @@ This collection contains 19 document text exports and 6 source/configuration sni
 
 Each archive preserves the available document text. The [source manifest](source_manifest.json) records original titles, source links, extracted sections, file sizes, SHA-256 hashes, and known limitations.
 
-The [Dune-Sub integration verification](integration_verification.md) records passed integrity checks and the missing components that block runtime validation.
+The [Dune-Sub integration verification](integration_verification.md) records the repaired repository toolchain, validation results, and deployment prerequisites.
 
 ## Documents
 
@@ -43,8 +43,8 @@ The [Dune-Sub integration verification](integration_verification.md) records pas
 
 ## Validation and limitations
 
-The Python blueprint generator passes a syntax check. Solidity compilation and Terraform provider validation were unavailable in the upload workspace. Terraform and CI/CD snippets are reference examples; review their source-manifest notes before use. Workflow examples are stored outside the active GitHub Actions directory.
+Implemented validation, scanning, and guarded source synchronization are under `src/`. Run `npm run check` for local checks. Active CI also compiles the contract and validates the Terraform provider configuration. Maintained examples record repairs and original hashes in the source manifest; archives preserve imported text.
 
-The discovered materials do not include the application files referenced in historical logs (`index.js`, `devicePolicy.json`, `gemWalletCollector.js`, or `nodeSyncer.js`), the referenced `GACC.7zip` package, or executable node-sync and hardware-attestation services.
+Application filenames in historical logs (`index.js`, `devicePolicy.json`, `gemWalletCollector.js`, and `nodeSyncer.js`) and `GACC.7zip` were not supplied. Current source synchronization is implemented in `src/dune-sync.mjs`; hardware-node integrations require actual service configuration.
 
 Copyright, license, and confidentiality notices within the original documents and snippets are preserved. This collection does not resolve conflicting source notices or assert a new project-wide license.

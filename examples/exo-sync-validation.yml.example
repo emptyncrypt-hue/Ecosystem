@@ -1,31 +1,48 @@
-name: EXO System Sync & Security Validation
-on:
- push:
-   branches: [ main, develop ]
- pull_request:
-   branches: [ main ]
+# Copy to .github/workflows/ if a separate validation workflow is needed.
+name: EXO System Sync and Security Validation
+
+"on":
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
 
 jobs:
- validate-schema:
-   runs-on: ubuntu-latest
-   steps:
-     - name: Checkout Repository Source
-       uses: actions/checkout@v4
+  validate-payload:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      - name: Validate payload integrity and policies
+        run: npm run validate:payload
 
-     - name: Setup Node.js Environment
-       uses: actions/setup-node@v4
-       with:
-         node-version: '20'
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      - name: Scan repository security baseline
+        run: npm run security:scan
 
-     - name: Validate Gateway JSON Schema
-       run: |
-         npx ajv-cli validate -s config/gateway-policies.json -d config/gateway-policies.json
-         echo "EXO JSON API gateway architecture configuration verified."
-
-  integrity-check:
-   runs-on: ubuntu-latest
-   steps:
-     - name: Calculate Infrastructure Delta Hashes
-       run: |
-         find docs/ security/ sync/ -type f -name "*.md" -exec sha256sum {} \; > node_manifest.sha256
-         echo "Dune-sub Org Cryptographic Node Manifest compiled successfully."
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+      - name: Test validators and synchronization
+        run: npm test

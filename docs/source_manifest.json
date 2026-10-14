@@ -2,7 +2,7 @@
   "schema_version": 1,
   "target_repository": "emptyncrypt-hue/Ecosystem",
   "normalization": "Document text exports and source snippets use UTF-8 and LF line breaks. Native document layout and styling are not reproduced.",
-  "status": "Source-document deployment and synchronization claims are historical assertions and have not been independently verified. Extracted examples retain their original content.",
+  "status": "Document archives preserve the imported source text. Derived code and configuration entries record original hashes and repair notes; current hashes verify the maintained files.",
   "documents": [
     {
       "path": "docs/archive/acl_source.txt",
@@ -202,12 +202,17 @@
       "source_title": "{#Cryptographic Security Encryption Enforcement to...",
       "revision_id": "AHj4eMTjuJ8TWpEMOTNT4_KcLFJ0xjSWS8tUfDKMvVsJPOoGaP_kf3M8fcGpF-kkxkWBWXQzjb1mdwKHg2oLmT-77xQsPsU2mvmLz_qekQ",
       "caveats": [
-        "Exact illustrative snippet with Google Docs soft line breaks normalized to LF.",
-        "No provider declaration, required-provider version, project/organization context, variable definitions, or deployment prerequisites are supplied in the source.",
-        "The snippet describes a network organization security policy rule as CMEK storage enforcement. Provider-schema and policy-effect validity are unverified; do not treat this snippet as a validated deployment configuration."
+        "Replaced the incorrect ingress policy with the Google CMEK organization policy; provider and variables are supplied by config/versions.tf and config/variables.tf.",
+        "Derived configuration requires organization/project values, APIs, IAM and KMS prerequisites described in config/README.md."
       ],
-      "size_bytes": 605,
-      "sha256": "ecd981741ca6ac584819a68b2612fc44e1f7315f974463be9d371463202e52c9"
+      "size_bytes": 520,
+      "sha256": "5f4f5e80622843f4bb3328865f26ff9796f0893a205a6262b823e3493fc74cb0",
+      "original_sha256": "ecd981741ca6ac584819a68b2612fc44e1f7315f974463be9d371463202e52c9",
+      "original_size_bytes": 605,
+      "modifications": [
+        "Replaced the incorrect ingress policy with the Google CMEK organization policy; provider and variables are supplied by config/versions.tf and config/variables.tf.",
+        "Derived configuration requires organization/project values, APIs, IAM and KMS prerequisites described in config/README.md."
+      ]
     },
     {
       "path": "contracts/node_acl_smart_contract.sol",
@@ -241,15 +246,20 @@
       "path": "examples/deployment/cloudbuild.yml",
       "section": "1. Finalized Deployment Manifest (cloudbuild.yaml)",
       "caveats": [
-        "Copied verbatim from the supplied document after newline normalization.",
-        "Archived as an example; no active CI/CD workflow is configured.",
-        "The referenced dune-sync, security-scan, and npm validate:payload implementations are not present in the discovered source."
+        "Derived from the original deployment sample; now uses Node 22 and implemented validation, scanning, tests and local source-snapshot bundling.",
+        "Remote repository writes require an explicit dune-sync --push invocation, token, and expected branch head. Cloud Build does not deploy infrastructure or synchronize physical nodes."
       ],
       "source_id": "12SKtGDXHOKYk4XZepaHM-vMWOq6SwFGuc3OYEqQGV-I",
       "source_title": "{$Finalizing the deployment manifest for the ⁠clou...",
       "source_url": "https://docs.google.com/document/d/12SKtGDXHOKYk4XZepaHM-vMWOq6SwFGuc3OYEqQGV-I/edit",
-      "size_bytes": 569,
-      "sha256": "f23d699820552f729f201f2823ddc88492b0797c82c53010284779b2395a842a"
+      "size_bytes": 604,
+      "sha256": "9b27199e4193ffff38ec267b026561c2f29fdea4b4d376d1319fd531b95d20a9",
+      "original_sha256": "f23d699820552f729f201f2823ddc88492b0797c82c53010284779b2395a842a",
+      "original_size_bytes": 569,
+      "modifications": [
+        "Derived from the original deployment sample; now uses Node 22 and implemented validation, scanning, tests and local source-snapshot bundling.",
+        "Remote repository writes require an explicit dune-sync --push invocation, token, and expected branch head. Cloud Build does not deploy infrastructure or synchronize physical nodes."
+      ]
     },
     {
       "path": "examples/exo-sync-validation.yml.example",
@@ -257,10 +267,17 @@
       "source_url": "https://docs.google.com/document/d/1vZfQehjVUJBtSPvzLzPzYkVF0Hfndb-s5OnNqzsP_ps/edit",
       "section": ".github/workflows/exo-sync-validation.yml",
       "caveats": [
-        "Archived workflow example; original indentation, JSON schema/data references and job inputs require review before activation."
+        "Derived workflow sample with corrected indentation, per-job checkout and implemented npm commands.",
+        "The active repository workflow is .github/workflows/verify.yml; this example remains outside the active workflow directory."
       ],
-      "size_bytes": 901,
-      "sha256": "193ed3f7c43da701418e188098f187cfce640b70c26cf58193906ef114380aa8"
+      "size_bytes": 1434,
+      "sha256": "cb3d6f32fe72b5c3ec6e11bfc331fa2c0023991fbef479241f684f01a259380e",
+      "original_sha256": "193ed3f7c43da701418e188098f187cfce640b70c26cf58193906ef114380aa8",
+      "original_size_bytes": 901,
+      "modifications": [
+        "Derived workflow sample with corrected indentation, per-job checkout and implemented npm commands.",
+        "The active repository workflow is .github/workflows/verify.yml; this example remains outside the active workflow directory."
+      ]
     },
     {
       "path": "scripts/generate_blueprint.py",
@@ -268,10 +285,17 @@
       "source_url": "https://docs.google.com/document/d/1-JZHzK4FrWSoo40K5YYEOWqQyjZnEFAUqjjA5LA7WcM/edit",
       "section": "Python DOCX blueprint generator",
       "caveats": [
-        "Requires python-docx and the original /mnt/data output directory; extracted unchanged."
+        "Derived from the original blueprint script; supports --output and creates the destination directory.",
+        "Requires python-docx==1.2.0 from requirements.txt."
       ],
-      "size_bytes": 1775,
-      "sha256": "4ba2f6a1f634949c6f5fb09d3366f08894a36d98814fad47f13da43b59aa26f7"
+      "size_bytes": 2745,
+      "sha256": "93599def87c227fed606587c47c6181f406fb92f994c3089182893d320129d58",
+      "original_sha256": "4ba2f6a1f634949c6f5fb09d3366f08894a36d98814fad47f13da43b59aa26f7",
+      "original_size_bytes": 1775,
+      "modifications": [
+        "Derived from the original blueprint script; supports --output and creates the destination directory.",
+        "Requires python-docx==1.2.0 from requirements.txt."
+      ]
     }
   ]
 }

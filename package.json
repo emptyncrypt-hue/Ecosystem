@@ -1,0 +1,19 @@
+{
+  "name": "dunesub-integration",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Ecosystem artifact validation, credential scanning, and guarded GitHub synchronization",
+  "type": "module",
+  "engines": { "node": ">=22.8" },
+  "bin": {
+    "dune-sync": "src/dune-sync.mjs",
+    "security-scan": "src/security-scan.mjs"
+  },
+  "scripts": {
+    "validate:payload": "node src/validate-payload.mjs",
+    "security:scan": "node src/security-scan.mjs --policy dune-sub-baseline",
+    "sync": "node src/dune-sync.mjs",
+    "test": "node --test --test-isolation=none test/*.test.mjs",
+    "check": "npm run test && npm run validate:payload && npm run security:scan"
+  }
+}

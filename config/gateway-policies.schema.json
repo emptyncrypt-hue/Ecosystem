@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dune-Sub repository synchronization policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "target", "integrity", "limits"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["owner", "repository", "branch"],
+      "properties": {
+        "owner": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,38}$" },
+        "repository": { "type": "string", "pattern": "^[A-Za-z0-9_.-]{1,100}$" },
+        "branch": { "type": "string", "minLength": 1, "maxLength": 255 }
+      }
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "rejectSymlinks"],
+      "properties": {
+        "algorithm": { "const": "sha256" },
+        "rejectSymlinks": { "const": true }
+      }
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["maxFiles", "maxFileBytes", "maxTotalBytes"],
+      "properties": {
+        "maxFiles": { "type": "integer", "minimum": 1, "maximum": 10000 },
+        "maxFileBytes": { "type": "integer", "minimum": 1, "maximum": 10485760 },
+        "maxTotalBytes": { "type": "integer", "minimum": 1, "maximum": 52428800 }
+      }
+    }
+  }
+}

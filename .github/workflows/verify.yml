@@ -1,0 +1,74 @@
+name: Verify Dune-Sub integration
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test validation, scanning, and guarded synchronization
+        run: npm run check
+      - name: Create and verify synchronization bundle
+        run: |
+          npm run sync -- --output dist/ecosystem-sync.json
+          npm run validate:payload -- --bundle dist/ecosystem-sync.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ecosystem-sync-bundle
+          path: dist/ecosystem-sync.json
+          if-no-files-found: error
+
+  configuration-and-blueprint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install document and YAML tools
+        run: python -m pip install -r requirements.txt PyYAML==6.0.3
+      - name: Parse all build configurations
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import yaml
+          for name in ['.github/workflows/verify.yml', 'examples/deployment/cloudbuild.yml', 'examples/exo-sync-validation.yml.example']:
+              yaml.safe_load(Path(name).read_text())
+              print(f'YAML syntax passed: {name}')
+          PY
+      - name: Generate the blueprint document
+        run: python scripts/generate_blueprint.py --output "$RUNNER_TEMP/Ecosystem-Blueprint.docx"
+
+  solidity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Compile the ACL contract
+        run: npm exec --yes --package=solc@0.8.30 -- solcjs --bin --abi -o "$RUNNER_TEMP/contracts" contracts/node_acl_smart_contract.sol
+
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.11.4'
+      - name: Check Terraform formatting
+        run: terraform fmt -check -recursive config
+      - name: Initialize the pinned Google provider
+        run: terraform -chdir=config init -backend=false -input=false
+      - name: Validate the CMEK organization policy
+        run: terraform -chdir=config validate -no-color

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "target": {
+    "owner": "emptyncrypt-hue",
+    "repository": "Ecosystem",
+    "branch": "main"
+  },
+  "integrity": {
+    "algorithm": "sha256",
+    "rejectSymlinks": true
+  },
+  "limits": {
+    "maxFiles": 2000,
+    "maxFileBytes": 1048576,
+    "maxTotalBytes": 5242880
+  }
+}

@@ -1,19 +1,26 @@
+# Runs repository checks and creates a local bundle in the Cloud Build workspace.
+# Remote sync must be explicitly requested separately.
 steps:
- # Stage 1: Payload Integrity Audit
- - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-   entrypoint: 'bash'
-   args: ['-c', 'npm run validate:payload']
+  - id: validate-payload
+    name: node:22
+    entrypoint: npm
+    args: ['run', 'validate:payload']
 
- # Stage 2: Dune-sub / emptyncrypt-hue Sync
- - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-   entrypoint: 'dune-sync'
-   args: ['--push', '--org', 'emptyncrypt-hue']
+  - id: security-scan
+    name: node:22
+    entrypoint: npm
+    args: ['run', 'security:scan']
 
- # Stage 3: Automated Security Scan
- - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-   entrypoint: 'bash'
-   args: ['-c', 'security-scan --target=emptyncrypt-hue --policy=dune-sub-baseline']
+  - id: test
+    name: node:22
+    entrypoint: npm
+    args: ['test']
+
+  - id: build-sync-bundle
+    name: node:22
+    entrypoint: npm
+    args: ['run', 'sync', '--', '--snapshot', '--output', 'dist/ecosystem-sync.json']
 
 options:
- logging: CLOUD_LOGGING_ONLY
+  logging: CLOUD_LOGGING_ONLY
 

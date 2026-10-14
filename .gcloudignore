@@ -1,0 +1,4 @@
+.gcloudignore
+.git
+.git/**
+#!include:.gitignore

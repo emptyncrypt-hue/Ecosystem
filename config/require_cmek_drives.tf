@@ -1,15 +1,17 @@
-# Enforcement policy requiring CMEK on all dynamically provisioned runtime drives
-resource "google_compute_organization_security_policy_rule" "require_cmek_drives" {
-  policy_id      = "dune-sub-storage-guard"
-  action         = "deny"
-  direction      = "INGRESS"
-  priority       = 100
-  match {
-    config {
-      src_ip_ranges = ["0.0.0.0/0"]
+# Require CMEK for supported new Compute Engine and Cloud Storage resources.
+# This list constraint checks resource encryption; an ingress rule cannot do so.
+resource "google_org_policy_policy" "require_cmek_drives" {
+  name   = "organizations/${var.organization_id}/policies/gcp.restrictNonCmekServices"
+  parent = "organizations/${var.organization_id}"
+
+  spec {
+    rules {
+      values {
+        denied_values = [
+          "compute.googleapis.com",
+          "storage.googleapis.com",
+        ]
+      }
     }
-    # Evaluates whether incoming compute request lacks Cloud KMS headers
-    expression = "!has(resource.encryption_key) || resource.encryption_key.kms_key_name == ''"
   }
-  description    = "Deny initialization of unencrypted drive infrastructure."
 }
