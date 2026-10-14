@@ -21,7 +21,7 @@ Original source baseline: [e35060e986de4ae77e2ed5ef2caaa033f092fe9e](https://git
 
 ## CI execution
 
-The active [verification workflow](../.github/workflows/verify.yml) checks integration, YAML/document generation, Solidity compilation, and Terraform provider validation. The first repaired-source run passed YAML/document generation, Solidity compilation, and Terraform formatting/provider validation. It exposed a Node 22 command-line incompatibility in the test runner; the portable runner is corrected and the follow-up run will confirm the integration job. [Initial CI evidence](https://github.com/emptyncrypt-hue/Ecosystem/actions/runs/38617728361).
+The active [verification workflow](../.github/workflows/verify.yml) checks integration, YAML/document generation, Solidity compilation, and Terraform provider validation. All four jobs passed in [GitHub CI run 38618181176](https://github.com/emptyncrypt-hue/Ecosystem/actions/runs/38618181176) for source commit `96704898d30ceb352fda6f3380bf7e7ab4c90ef8`: integration checks and bundle generation, configuration/DOCX generation, Solidity compilation, and Terraform formatting/provider validation. The portable test runner passes on Node 22 and newer releases.
 
 ## Deployment prerequisites
 
