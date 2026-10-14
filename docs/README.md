@@ -4,6 +4,8 @@ This collection contains 19 document text exports and 6 source/configuration sni
 
 Each archive preserves the available document text. The [source manifest](source_manifest.json) records original titles, source links, extracted sections, file sizes, SHA-256 hashes, and known limitations.
 
+The [Dune-Sub integration verification](integration_verification.md) records passed integrity checks and the missing components that block runtime validation.
+
 ## Documents
 
 | Archive | Original document |
