@@ -13,7 +13,7 @@
     "validate:payload": "node src/validate-payload.mjs",
     "security:scan": "node src/security-scan.mjs --policy dune-sub-baseline",
     "sync": "node src/dune-sync.mjs",
-    "test": "node --test --test-isolation=none test/*.test.mjs",
+    "test": "node scripts/run-tests.mjs",
     "check": "npm run test && npm run validate:payload && npm run security:scan"
   }
 }

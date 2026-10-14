@@ -16,12 +16,12 @@ Original source baseline: [e35060e986de4ae77e2ed5ef2caaa033f092fe9e](https://git
 | Cloud Build commands | Replaced unavailable shell executables with Node 22/npm commands and explicit snapshot bundling. YAML parsing passed. The build performs checks and produces a local bundle. |
 | Blueprint output directory | Added `--output`, a portable default, and parent-directory creation. The generated DOCX passed ZIP integrity checks and reopened successfully. |
 | Incorrect CMEK resource | Replaced the ingress policy with `google_org_policy_policy` using `gcp.restrictNonCmekServices` for Compute Engine and Cloud Storage. Provider version, variables and prerequisites are documented in [config/README.md](../config/README.md). |
-| Missing contract/infrastructure tooling | Added active CI jobs with Solidity 0.8.30 compilation and Terraform 1.11.4 plus Google provider 6.49.2 initialization/validation. These tools are not installed locally. CI execution results are recorded after the push. |
+| Missing contract/infrastructure tooling | Added active CI jobs with Solidity 0.8.30 compilation and Terraform 1.11.4 plus Google provider 6.49.2 initialization/validation. These tools are not installed locally. Both compilation and provider validation passed in GitHub CI. |
 | Source provenance | Preserved document archives and recorded original hashes and repair notes for the four maintained source/configuration files. Current manifest validation passed. |
 
 ## CI execution
 
-The active [verification workflow](../.github/workflows/verify.yml) checks integration, YAML/document generation, Solidity compilation, and Terraform provider validation. Its results are pending the first run of the repaired source commit.
+The active [verification workflow](../.github/workflows/verify.yml) checks integration, YAML/document generation, Solidity compilation, and Terraform provider validation. The first repaired-source run passed YAML/document generation, Solidity compilation, and Terraform formatting/provider validation. It exposed a Node 22 command-line incompatibility in the test runner; the portable runner is corrected and the follow-up run will confirm the integration job. [Initial CI evidence](https://github.com/emptyncrypt-hue/Ecosystem/actions/runs/38617728361).
 
 ## Deployment prerequisites
 
