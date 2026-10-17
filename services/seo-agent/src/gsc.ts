@@ -1,0 +1,172 @@
+/**
+ * Google Search Console ingestion — dormant until the GSC_SERVICE_ACCOUNT_JSON
+ * secret is configured (a service account added to the Search Console property
+ * with read access). Pulls page+query daily metrics into gsc_daily; GSC data
+ * lags ~2 days, so each run re-pulls a trailing window and upserts.
+ */
+
+const TOKEN_URL = 'https://oauth2.googleapis.com/token';
+const SCOPE = 'https://www.googleapis.com/auth/webmasters.readonly';
+const ROW_LIMIT = 5000;
+const LAG_DAYS = 2;
+const WINDOW_DAYS = 3;
+const FETCH_TIMEOUT_MS = 15_000;
+
+type ServiceAccount = { client_email: string; private_key: string };
+
+const b64url = (data: ArrayBuffer | string): string => {
+  const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data);
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+};
+
+function pemToDer(pem: string): ArrayBuffer {
+  const b64 = pem.replace(/-----[^-]+-----/g, '').replace(/\s+/g, '');
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes.buffer;
+}
+
+async function accessToken(sa: ServiceAccount): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  const header = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
+  const claims = b64url(
+    JSON.stringify({ iss: sa.client_email, scope: SCOPE, aud: TOKEN_URL, iat: now, exp: now + 3600 })
+  );
+  const key = await crypto.subtle.importKey(
+    'pkcs8',
+    pemToDer(sa.private_key),
+    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  const signature = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', key, new TextEncoder().encode(`${header}.${claims}`));
+  const jwt = `${header}.${claims}.${b64url(signature)}`;
+
+  const res = await fetch(TOKEN_URL, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: jwt }),
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+  if (!res.ok) throw new Error(`google token exchange failed: ${res.status} ${await res.text()}`);
+  return ((await res.json()) as { access_token: string }).access_token;
+}
+
+const isoDaysAgo = (days: number): string => new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
+const addDays = (date: string, n: number): string => {
+  const d = new Date(date + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+};
+
+// History backfill: when gsc_daily holds fewer than this many distinct dates
+// the sense fetches ~90 days (chunked, capped) so the analytics layer has a
+// real baseline. Effectively one-shot: as soon as 30 distinct dates exist the
+// trigger is false forever. A property that never accrues 30 dates (young, or
+// too small to register daily impressions) re-attempts on each daily run —
+// deliberate: it's idempotent and a few calls against a many-thousands daily
+// GSC quota, and it self-resolves the moment enough days land. No state
+// machinery needed.
+const BACKFILL_MIN_DATES = 30;
+const BACKFILL_DAYS = 90;
+const BACKFILL_CHUNK_DAYS = 30;
+const MAX_BACKFILL_CALLS = 40; // safety cap on paged API requests
+
+type Row = { keys: [string, string, string]; clicks: number; impressions: number; ctr: number; position: number };
+
+/** Page through one date range, returning every row and the API call count. */
+async function fetchRange(
+  token: string,
+  endpoint: string,
+  startDate: string,
+  endDate: string
+): Promise<{ rows: Row[]; calls: number }> {
+  const rows: Row[] = [];
+  let calls = 0;
+  for (let startRow = 0; ; startRow += ROW_LIMIT) {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ startDate, endDate, dimensions: ['date', 'page', 'query'], rowLimit: ROW_LIMIT, startRow }),
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
+    calls++;
+    if (!res.ok) throw new Error(`searchanalytics query failed: ${res.status} ${await res.text()}`);
+    const batch = ((await res.json()) as { rows?: Row[] }).rows ?? [];
+    rows.push(...batch);
+    if (batch.length < ROW_LIMIT) break;
+  }
+  return { rows, calls };
+}
+
+async function upsertRows(env: Env, rows: Row[]): Promise<void> {
+  if (rows.length === 0) return;
+  const upsert = env.DB.prepare(
+    `INSERT OR REPLACE INTO gsc_daily (date, page, query, clicks, impressions, ctr, position) VALUES (?, ?, ?, ?, ?, ?, ?)`
+  );
+  // D1 batches are capped well above this chunk size; chunk to stay safe.
+  for (let i = 0; i < rows.length; i += 500) {
+    await env.DB.batch(
+      rows.slice(i, i + 500).map((r) => upsert.bind(r.keys[0], r.keys[1], r.keys[2], r.clicks, r.impressions, r.ctr, r.position))
+    );
+  }
+}
+
+/** Fetch ~90 days of history in date-chunked, paged requests (capped). Idempotent. */
+async function backfillGsc(env: Env, token: string, endpoint: string): Promise<{ range: string; rows: number; calls: number }> {
+  const overallStart = isoDaysAgo(LAG_DAYS + BACKFILL_DAYS - 1);
+  const overallEnd = isoDaysAgo(LAG_DAYS);
+  let totalRows = 0;
+  let calls = 0;
+  for (let chunkStart = overallStart; chunkStart <= overallEnd; ) {
+    const proposedEnd = addDays(chunkStart, BACKFILL_CHUNK_DAYS - 1);
+    const chunkEnd = proposedEnd < overallEnd ? proposedEnd : overallEnd;
+    const { rows, calls: c } = await fetchRange(token, endpoint, chunkStart, chunkEnd);
+    calls += c;
+    await upsertRows(env, rows);
+    totalRows += rows.length;
+    if (calls >= MAX_BACKFILL_CALLS) {
+      // Safety valve, unreachable at small-site volume (one call per 30-day
+      // chunk). A very large property gets up to this many paged calls of
+      // history and the remainder is FORGONE, not resumed: if this partial
+      // fetch already pushed distinct dates past BACKFILL_MIN_DATES, the
+      // thin-history trigger goes false and the backfill never runs again.
+      console.log(JSON.stringify({ evt: 'gsc_backfill_capped', calls, rows: totalRows, coveredTo: chunkEnd }));
+      break;
+    }
+    chunkStart = addDays(chunkEnd, 1);
+  }
+  const range = `${overallStart}..${overallEnd}`;
+  console.log(JSON.stringify({ evt: 'gsc_backfill_complete', range, rows: totalRows, calls }));
+  return { range, rows: totalRows, calls };
+}
+
+export async function ingestGsc(
+  env: Env
+): Promise<{ skipped?: string; upserted?: number; window?: string; backfill?: { range: string; rows: number; calls: number } }> {
+  if (!env.GSC_SERVICE_ACCOUNT_JSON) return { skipped: 'GSC_SERVICE_ACCOUNT_JSON not configured' };
+
+  const sa = JSON.parse(env.GSC_SERVICE_ACCOUNT_JSON) as ServiceAccount;
+  const token = await accessToken(sa);
+  const startDate = isoDaysAgo(LAG_DAYS + WINDOW_DAYS - 1);
+  const endDate = isoDaysAgo(LAG_DAYS);
+  const endpoint = `https://searchconsole.googleapis.com/webmasters/v3/sites/${encodeURIComponent(env.GSC_PROPERTY)}/searchAnalytics/query`;
+
+  const { rows } = await fetchRange(token, endpoint, startDate, endDate);
+  await upsertRows(env, rows);
+  console.log(JSON.stringify({ evt: 'gsc_ingest_complete', window: `${startDate}..${endDate}`, rows: rows.length }));
+
+  // Thin history → 90-day backfill (INSERT OR REPLACE, so overlap with the
+  // trailing window above is harmless; see the trigger semantics on
+  // BACKFILL_MIN_DATES above).
+  let backfill: { range: string; rows: number; calls: number } | undefined;
+  const distinct = await env.DB.prepare('SELECT COUNT(DISTINCT date) AS n FROM gsc_daily').first<{ n: number }>();
+  if ((distinct?.n ?? 0) < BACKFILL_MIN_DATES) {
+    backfill = await backfillGsc(env, token, endpoint);
+  }
+
+  return { upserted: rows.length, window: `${startDate}..${endDate}`, ...(backfill ? { backfill } : {}) };
+}

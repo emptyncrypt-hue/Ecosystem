@@ -2,7 +2,7 @@
   "name": "dunesub-integration",
   "version": "1.0.0",
   "private": true,
-  "description": "Ecosystem artifact validation, credential scanning, and guarded GitHub synchronization",
+  "description": "Ecosystem policy tooling and a self-contained Cloudflare SEO agent service",
   "type": "module",
   "engines": { "node": ">=22.8" },
   "bin": {
@@ -13,6 +13,17 @@
     "validate:payload": "node src/validate-payload.mjs",
     "security:scan": "node src/security-scan.mjs --policy dune-sub-baseline",
     "sync": "node src/dune-sync.mjs",
+    "seo:install": "npm ci --prefix services/seo-agent",
+    "seo:configure": "node scripts/seo-agent.mjs configure",
+    "seo:provenance": "node scripts/verify-seo-agent-source.mjs",
+    "seo:check": "npm run seo:configure && npm run check --prefix services/seo-agent",
+    "seo:test": "npm test --prefix services/seo-agent",
+    "seo:build": "npm run seo:configure && npm run build --prefix services/seo-agent",
+    "seo:smoke": "npm run seo:build && node scripts/test-seo-agent-runtime.mjs",
+    "seo:verify": "npm run seo:provenance && npm run seo:check && npm run seo:test && npm run seo:smoke",
+    "seo:dev": "npm run seo:configure && npm run dev --prefix services/seo-agent",
+    "seo:deploy": "node --use-env-proxy scripts/seo-agent.mjs deploy",
+    "seo:status": "node --use-env-proxy scripts/seo-agent.mjs status",
     "test": "node scripts/run-tests.mjs",
     "check": "npm run test && npm run validate:payload && npm run security:scan"
   }
