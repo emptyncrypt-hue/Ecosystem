@@ -2,7 +2,7 @@
 
 Ecosystem provides a dependency-free Node.js control client for a separately deployed [emptyncrypt-hue/seo-agent](https://github.com/emptyncrypt-hue/seo-agent) Cloudflare Worker. It reads findings and proposals, starts crawls, and sends explicit approval, rejection, and revert requests. It adds no Node dependencies, submodules, or vendored upstream code; the upstream MIT license remains with the separate checkout. Imported source archives and their manifest are unchanged.
 
-The REST contract was reviewed at upstream commit [`a145d2677ae1882680a828e196deb14b3b618955`](https://github.com/emptyncrypt-hue/seo-agent/tree/a145d2677ae1882680a828e196deb14b3b618955). The integration is tested with a local mock API. No Worker has been deployed or verified against a live site; the public site URL and Cloudflare credentials must be supplied for deployment.
+The REST contract was reviewed at upstream commit [`a145d2677ae1882680a828e196deb14b3b618955`](https://github.com/emptyncrypt-hue/seo-agent/tree/a145d2677ae1882680a828e196deb14b3b618955). The deployment commands below pin the compatible [install repair](https://github.com/emptyncrypt-hue/seo-agent/pull/1), which fixes missing lockfile entries without changing the REST implementation. The integration is tested with a local mock API. No Worker has been deployed or verified against a live site; the public site URL and Cloudflare credentials must be supplied for deployment.
 
 ## Connect Ecosystem
 
@@ -59,12 +59,12 @@ Keep the separate Worker's `AUTO_APPLY_FIELDS` empty: if an operator enables aut
 
 ## Deploy the separate Worker
 
-Deployment requires a Cloudflare account on Workers Paid, Node.js 18 or later for the upstream project, Wrangler 4 or later, D1, KV, Queues, Workers AI, and a real public site serving `sitemap.xml`. Ecosystem itself still requires Node.js 22.8 or later. Deploy the upstream project outside this repository:
+Deployment requires a Cloudflare account on Workers Paid, Node.js 22.12+ on 22.x or Node.js 24+, Wrangler 4 or later, D1, KV, Queues, Workers AI, and a real public site serving `sitemap.xml`. Ecosystem itself still requires Node.js 22.8 or later. Deploy the upstream project outside this repository:
 
 ```sh
 git clone https://github.com/emptyncrypt-hue/seo-agent.git
 cd seo-agent
-git checkout a145d2677ae1882680a828e196deb14b3b618955
+git checkout a9614ed5e9618aaec3243c0926b6aa576aa3db39
 npm ci
 npx wrangler login
 npx wrangler d1 create seo-agent-db
