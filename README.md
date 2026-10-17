@@ -30,6 +30,18 @@ The tool checks the expected head before creating a commit, preserves unrelated 
 
 Cloud Build source snapshots may omit `.git`. [cloudbuild.yml](examples/deployment/cloudbuild.yml) uses the explicit `--snapshot` mode to run checks and create a local bundle from that workspace. Remote publication uses the separate explicit push command.
 
+## SEO agent integration
+
+Use the optional [seo-agent](https://github.com/emptyncrypt-hue/seo-agent) Cloudflare Worker through Ecosystem's dependency-free control client. Set `SEO_AGENT_URL` to your deployed Worker's HTTPS origin and provide its `AGENT_TOKEN` as `SEO_AGENT_TOKEN` through your environment or secret manager, then run:
+
+```sh
+npm run seo -- status
+npm run seo -- findings
+npm run seo -- proposals
+```
+
+Run, approve, reject, and revert operations require explicit commands. Leave the Worker's `AUTO_APPLY_FIELDS` empty to require approval for site changes. [Setup, deployment prerequisites, and command reference](docs/seo-agent.md) explain how to connect the separate Worker and the public site's injector. No live deployment or site connection is included.
+
 ## Configuration and documentation
 
 - [Integration verification and deployment prerequisites](docs/integration_verification.md)
