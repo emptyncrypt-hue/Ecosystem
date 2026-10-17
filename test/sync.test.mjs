@@ -136,6 +136,16 @@ test('snapshot mode rejects symlinks, unsafe paths, secret env files and unknown
   await fs.writeFile(path.join(root, '.env'), 'API_KEY=example\n');
   await assert.rejects(createBundle(root, { snapshot: true }), /Environment secret files/);
   await fs.rm(path.join(root, '.env'));
+  await fs.mkdir(path.join(root, 'services/seo-agent'), { recursive: true });
+  await fs.writeFile(path.join(root, 'services/seo-agent/.gitignore'), '.dev.vars\n.dev.vars.*\n!.dev.vars.example\n');
+  for (const name of ['.dev.vars', '.dev.vars.production']) {
+    const secretPath = path.join(root, 'services/seo-agent', name);
+    await fs.writeFile(secretPath, 'AGENT_TOKEN=synthetic-worker-credential\n');
+    await assert.rejects(createBundle(root, { snapshot: true }), /Environment secret files/);
+    await fs.rm(secretPath);
+  }
+  await fs.writeFile(path.join(root, 'services/seo-agent/.dev.vars.example'), 'AGENT_TOKEN=replace-me\n');
+  assert.ok((await createBundle(root, { snapshot: true })).files.some(file => file.path === 'services/seo-agent/.dev.vars.example'));
   await fs.writeFile(path.join(root, 'unknown.dat'), Buffer.from([0xff]));
   await assert.rejects(createBundle(root, { snapshot: true }), /UTF-8/i);
 });

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const HELP = `Usage: security-scan [--root directory] [--target owner] [--policy dune-sub-baseline]
 
-Scan current repository text files for common credential patterns and sensitive .env files.
+Scan current repository text files for common credential patterns and sensitive .env/.dev.vars files.
 The default target comes from config/security-policy.json. Findings contain path, line, and
 rule only. Git history and the excluded .git, node_modules, dist, generated, .terraform,
 and __pycache__ directories

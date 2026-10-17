@@ -42,7 +42,8 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           import yaml
-          for name in ['.github/workflows/verify.yml', 'examples/deployment/cloudbuild.yml', 'examples/exo-sync-validation.yml.example']:
+          names = [*Path('.github/workflows').glob('*.yml'), Path('examples/deployment/cloudbuild.yml'), Path('examples/exo-sync-validation.yml.example')]
+          for name in names:
               yaml.safe_load(Path(name).read_text())
               print(f'YAML syntax passed: {name}')
           PY
@@ -58,6 +59,26 @@ jobs:
           node-version: '22'
       - name: Compile the ACL contract
         run: npm exec --yes --package=solc@0.8.30 -- solcjs --bin --abi -o "$RUNNER_TEMP/contracts" contracts/node_acl_smart_contract.sol
+
+  seo-agent:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: services/seo-agent/package-lock.json
+      - name: Install pinned Worker tooling
+        run: npm run seo:install
+      - name: Typecheck, test, and verify Worker HTTP, D1, and KV integration
+        env:
+          WRANGLER_SEND_METRICS: 'false'
+          WRANGLER_LOG_PATH: ${{ runner.temp }}/seo-agent-wrangler.log
+          XDG_CONFIG_HOME: ${{ runner.temp }}/seo-agent-config
+        run: |
+          mkdir -p "$XDG_CONFIG_HOME/.wrangler"
+          npm run seo:verify
 
   terraform:
     runs-on: ubuntu-latest

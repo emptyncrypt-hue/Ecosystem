@@ -99,6 +99,21 @@ test('bundle rejects wrong targets, duplicates, size-limit bypass and secret-fil
   assert.equal(validateBundle(tooLarge, policies).ok, false);
 });
 
+test('bundle rejects environment and Wrangler secret files while permitting example templates', () => {
+  const secret = 'synthetic-worker-credential';
+  for (const name of ['.env', '.env.production', 'services/seo-agent/.dev.vars', 'services/seo-agent/.dev.vars.', 'services/seo-agent/.dev.vars.production']) {
+    const value = bundle();
+    value.files = [file(name, `AGENT_TOKEN=${secret}\n`)];
+    const result = validateBundle(value, policies);
+    assert.equal(result.ok, false, name);
+    assert.ok(result.errors.some(error => error.includes('Environment secret files')));
+    assert.ok(result.errors.every(error => !error.includes(secret)));
+  }
+  const value = bundle();
+  value.files = [file('.env.example', 'TOKEN=replace-me\n'), file('services/seo-agent/.dev.vars.example', 'AGENT_TOKEN=replace-me\n')];
+  assert.equal(validateBundle(value, policies).ok, true);
+});
+
 test('malformed refs and unpaired Unicode surrogates are rejected', () => {
   const value = bundle();
   value.target.branch = 'main.lock';
