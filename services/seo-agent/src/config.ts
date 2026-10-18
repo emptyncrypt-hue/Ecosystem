@@ -9,6 +9,8 @@ export type SiteConfig = {
   siteName: string;
   /** One clause describing the site, woven into the AI drafting prompt. */
   siteDescription: string;
+  /** Verified local paths equivalent to the canonical homepage (exact matches only). */
+  homepagePathAliases: string[];
   /** Brand suffix the injector appends to titles, e.g. " | Acme". "" disables the suffix-aware title rules. */
   titleBrandSuffix: string;
   /** The static SPA-shell <title>. "" disables the injection-regression check. */
@@ -32,6 +34,7 @@ export function siteConfig(env: Env): SiteConfig {
     siteUrl: env.SITE_URL,
     siteName: env.SITE_NAME || host,
     siteDescription: env.SITE_DESCRIPTION || `the website at ${host}`,
+    homepagePathAliases: env.HOMEPAGE_PATH_ALIASES?.split(',').map((path) => path.trim()).filter(Boolean) ?? [],
     titleBrandSuffix: env.TITLE_BRAND_SUFFIX || '',
     shellTitle: env.SHELL_TITLE || '',
     articlePathPrefix: env.ARTICLE_PATH_PREFIX || '',

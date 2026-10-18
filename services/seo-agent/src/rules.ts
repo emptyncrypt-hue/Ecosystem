@@ -8,6 +8,7 @@
 
 import type { PageSnapshot } from './crawl.js';
 import { siteConfig } from './config.js';
+import { canonicalHomepagePath } from './pagepath.js';
 
 export type Triggered = { path: string; rule: string; severity: string; detail: string };
 
@@ -161,7 +162,7 @@ export async function runRules(
   if (prev) {
     const prevPaths = new Set(
       (await env.DB.prepare('SELECT path FROM page_snapshots WHERE run_id = ?').bind(prev.id).all<{ path: string }>()).results.map(
-        (r) => r.path
+        (r) => canonicalHomepagePath(r.path, cfg.homepagePathAliases)
       )
     );
     const currentPaths = new Set(snapshots.map((s) => s.path));
@@ -207,10 +208,16 @@ export async function runRules(
   const now = new Date().toISOString();
   const statements = [];
   const insert = env.DB.prepare('INSERT INTO findings (created_at, run_id, path, rule, severity, detail) VALUES (?, ?, ?, ?, ?, ?)');
+  const refresh = env.DB.prepare("UPDATE findings SET severity = ?, detail = ? WHERE id = ? AND status = 'open'");
   let opened = 0;
   for (const t of uniqueTriggered) {
     const k = keyOf(t.path, t.rule);
-    if (openKeys.has(k)) continue; // already open — leave it
+    if (openKeys.has(k)) {
+      // Keep the finding's identity/history while refreshing changed guidance
+      // or severity (e.g. optional llms.txt). Never unmute a dismissal.
+      statements.push(refresh.bind(t.severity, t.detail, openKeys.get(k)));
+      continue;
+    }
     if (dismissedKeys.has(k)) continue; // muted — a human dismissed it; don't re-open
     statements.push(insert.bind(now, runId, t.path, t.rule, t.severity, t.detail));
     opened++;

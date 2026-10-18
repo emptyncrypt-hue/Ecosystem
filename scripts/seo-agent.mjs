@@ -14,7 +14,7 @@ const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const HEX_ID = /^[a-f0-9]{32}$/i;
 
 export function validateConfig(input) {
-  const keys = ['siteUrl', 'siteName', 'accountId', 'workerName', 'databaseName', 'queueName', 'namespaceTitle', 'sitemapOriginAliases'];
+  const keys = ['siteUrl', 'siteName', 'siteDescription', 'accountId', 'workerName', 'databaseName', 'queueName', 'namespaceTitle', 'sitemapOriginAliases', 'homepagePathAliases'];
   if (!input || typeof input !== 'object' || Array.isArray(input)
       || Object.keys(input).some(key => !keys.includes(key))) {
     throw new Error('SEO configuration accepts only documented non-secret fields.');
@@ -31,6 +31,19 @@ export function validateConfig(input) {
   if (typeof input.siteName !== 'string' || !input.siteName.trim() || input.siteName.length > 100) {
     throw new Error('A siteName of 1–100 characters is required.');
   }
+  if (input.siteDescription !== undefined && (typeof input.siteDescription !== 'string' || !input.siteDescription.trim()
+      || input.siteDescription.length > 500 || /[<>\u0000-\u001f\u007f]/.test(input.siteDescription))) {
+    throw new Error('siteDescription must be 1–500 characters of single-line plain text.');
+  }
+  let homepagePathAliases;
+  if (input.homepagePathAliases !== undefined) {
+    if (!Array.isArray(input.homepagePathAliases) || input.homepagePathAliases.length > 5
+        || input.homepagePathAliases.some(path => typeof path !== 'string' || path.length > 200
+          || !/^\/(?!\/)[a-zA-Z0-9/_-]+$/.test(path) || path.includes('//'))) {
+      throw new Error('homepagePathAliases must contain at most five explicit local paths without queries, fragments, or URL encoding.');
+    }
+    homepagePathAliases = [...new Set(input.homepagePathAliases)];
+  }
   let sitemapOriginAliases;
   if (input.sitemapOriginAliases !== undefined) {
     if (!Array.isArray(input.sitemapOriginAliases) || input.sitemapOriginAliases.length > 5) {
@@ -46,7 +59,8 @@ export function validateConfig(input) {
     });
     sitemapOriginAliases = [...new Set(sitemapOriginAliases)].filter(origin => origin !== site.origin);
   }
-  return { ...input, siteUrl: site.origin, ...(sitemapOriginAliases !== undefined ? { sitemapOriginAliases } : {}) };
+  return { ...input, siteUrl: site.origin, ...(sitemapOriginAliases !== undefined ? { sitemapOriginAliases } : {}),
+    ...(homepagePathAliases !== undefined ? { homepagePathAliases } : {}) };
 }
 
 async function readConfig(rootDir) {
@@ -84,8 +98,9 @@ export function buildWranglerConfig(config, resources) {
     vars: {
       SITE_URL: config.siteUrl,
       ...(config.sitemapOriginAliases?.length ? { SITEMAP_ORIGIN_ALIASES: config.sitemapOriginAliases.join(',') } : {}),
+      ...(config.homepagePathAliases?.length ? { HOMEPAGE_PATH_ALIASES: config.homepagePathAliases.join(',') } : {}),
       SITE_NAME: config.siteName,
-      SITE_DESCRIPTION: '',
+      SITE_DESCRIPTION: config.siteDescription ?? '',
       GSC_PROPERTY: `sc-domain:${new URL(config.siteUrl).hostname}`,
       AI_MODEL: '@cf/zai-org/glm-4.7-flash',
       AUTO_APPLY_FIELDS: '',

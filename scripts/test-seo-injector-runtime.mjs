@@ -2,12 +2,15 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { gzipSync, deflateSync, brotliCompressSync } from 'node:zlib';
+import { createHash } from 'node:crypto';
+import { CANONICAL_HOME, PLATFORM_TITLE, PLATFORM_DESCRIPTION, PLATFORM_CSS_PATH } from '../services/seo-injector/src/platform.mjs';
 
 // This smoke check uses workerd's real HTMLRewriter and local KV. Every origin
 // fetch is intercepted below: it cannot contact Squarespace or another host.
 const serviceUrl = new URL('../services/seo-agent/', import.meta.url);
 const require = createRequire(new URL('package.json', serviceUrl));
 const { Miniflare, Log, LogLevel } = require('miniflare');
+const { build } = require('esbuild');
 const html = '<!doctype html><html><head><title>Origin title</title>' +
   '<meta name="description" content="Origin description">' +
   '<meta property="og:title" content="Origin title">' +
@@ -25,11 +28,22 @@ const headers = {
   'last-modified': 'Wed, 01 Jan 2025 00:00:00 GMT', vary: 'Accept-Encoding, Cookie',
   'content-security-policy': "default-src 'self'", 'set-cookie': 'session=kept; Secure; HttpOnly',
 };
+// A tiny valid PNG keeps the native asset test hermetic. The same production
+// handler and metadata renderer are bundled with this test-only manifest.
+const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a1ZkAAAAASUVORK5CYII=', 'base64');
+const testImage = { width: 1, height: 1, sha256: createHash('sha256').update(png).digest('hex'), alt: 'DuneSub Ecosystem test image' };
+const testImagePath = `/__dunesub/social/${testImage.sha256}.png`;
+// Match Wrangler's production bundle, including the nonsecret JSON manifest.
+const bundled = (await build({
+  entryPoints: [fileURLToPath(new URL('../services/seo-injector/src/index.mjs', import.meta.url))],
+  bundle: true, format: 'esm', platform: 'neutral', write: false,
+  plugins: [{ name: 'fixture-social-image', setup(build) {
+    build.onLoad({ filter: /social-image\.json$/ }, () => ({ loader: 'json', contents: JSON.stringify(testImage) }));
+  } }],
+})).outputFiles[0].text;
 
 const runtime = new Miniflare({
-  modules: ['index.mjs', 'handler.mjs'].map(name => ({
-    type: 'ESModule', path: fileURLToPath(new URL(`../services/seo-injector/src/${name}`, import.meta.url)),
-  })),
+  modules: [{ type: 'ESModule', path: fileURLToPath(new URL('../services/seo-injector/src/index.mjs', import.meta.url)), contents: bundled }],
   compatibilityDate: '2025-06-17',
   log: new Log(LogLevel.ERROR),
   cachePersist: false,
@@ -51,10 +65,16 @@ const runtime = new Miniflare({
     } else if (path === '/redirect') {
       response.writeHead(302, { location: 'https://www.dunesub.de/new' });
       response.end();
+    } else if (path === '/sitemap.xml') {
+      const xml = '<urlset><url><loc>https://sepia-carnation-yj5e.squarespace.com/home</loc></url>' +
+        '<url><loc>https://unrelated.squarespace.com/home</loc></url></urlset>';
+      const bytes = gzipSync(xml);
+      response.writeHead(200, { ...headers, 'content-type': 'application/xml', 'content-length': String(bytes.length) });
+      response.end(bytes);
     } else {
       const encoding = path === '/deflate' ? 'deflate' : path === '/brotli' ? 'br' : 'gzip';
       const bytes = encoding === 'deflate' ? deflateSync(html) : encoding === 'br' ? brotliCompressSync(html) : compressed;
-      response.writeHead(path === '/private' ? 401 : 200, {
+      response.writeHead(path === '/private' || url.searchParams.has('private') ? 401 : 200, {
         ...headers, 'content-encoding': encoding, 'content-length': String(bytes.length),
       });
       response.end(bytes);
@@ -64,6 +84,7 @@ const runtime = new Miniflare({
 
 try {
   const kv = await runtime.getKVNamespace('SEO_OVERRIDES');
+  await kv.put(`asset:dunesub-social:${testImage.sha256}.png`, png);
   for (const path of ['/approved', '/private', '/redirect', '/form', '/deflate', '/brotli']) {
     await kv.put(`override:${path}`, JSON.stringify({ title, description }));
   }
@@ -127,7 +148,55 @@ try {
   const preview = await runtime.dispatchFetch('https://preview.workers.dev/approved');
   assert.equal(preview.status, 404);
   assert.equal(calls.length, 7);
-  console.log('SEO injector workerd smoke passed: compressed HTML, escaping, cookies/CSP, passthrough, and one-fetch form handling.');
+
+  for (const path of ['/', '/home', '/home/']) {
+    const response = await runtime.dispatchFetch(`https://www.dunesub.de${path}`);
+    const body = await response.text();
+    assert.ok(body.includes(`<title>${PLATFORM_TITLE.replaceAll('&', '&amp;')}</title>`));
+    assert.ok(body.includes(`<meta name="description" content="${PLATFORM_DESCRIPTION}">`));
+    assert.ok(body.includes(`<link rel="canonical" href="${CANONICAL_HOME}">`));
+    assert.ok(body.includes(`content="https://www.dunesub.de${testImagePath}"`));
+    assert.ok(body.includes('Validate payloads against policy'));
+    assert.ok(!body.includes('Original body'));
+    assert.equal(response.headers.get('etag'), null);
+    for (const name of ['vary', 'content-security-policy', 'set-cookie']) assert.equal(response.headers.get(name), headers[name]);
+    assert.equal(response.headers.get('link'), `<${CANONICAL_HOME}>; rel="canonical"`);
+  }
+  assert.equal(calls.length, 10);
+
+  const gatedHome = await runtime.dispatchFetch('https://www.dunesub.de/?private=true');
+  assert.equal(gatedHome.status, 401);
+  assert.equal(await gatedHome.text(), html);
+  assert.equal(gatedHome.headers.get('etag'), '"origin"');
+  const editingHome = await runtime.dispatchFetch('https://www.dunesub.de/home?preview=true');
+  assert.equal(await editingHome.text(), html);
+  assert.equal(editingHome.headers.get('etag'), '"origin"');
+  assert.equal(calls.length, 12);
+
+  const sitemap = await runtime.dispatchFetch('https://www.dunesub.de/sitemap.xml');
+  const xml = await sitemap.text();
+  assert.ok(xml.includes(`<loc>${CANONICAL_HOME}</loc>`));
+  assert.ok(!xml.includes('sepia-carnation-yj5e'));
+  assert.ok(xml.includes('<loc>https://unrelated.squarespace.com/home</loc>'));
+  assert.equal(sitemap.headers.get('etag'), null);
+  assert.equal(sitemap.headers.get('content-encoding'), null);
+  assert.equal(calls.length, 13);
+
+  for (const method of ['GET', 'HEAD']) {
+    const css = await runtime.dispatchFetch(`https://www.dunesub.de${PLATFORM_CSS_PATH}`, { method });
+    assert.equal(css.status, 200);
+    assert.match(css.headers.get('content-type'), /^text\/css/);
+    const cssBody = await css.text();
+    assert.equal(method === 'GET' ? cssBody.includes('prefers-reduced-motion') : cssBody === '', true);
+    const image = await runtime.dispatchFetch(`https://www.dunesub.de${testImagePath}`, { method });
+    assert.equal(image.status, 200);
+    assert.equal(image.headers.get('content-type'), 'image/png');
+    assert.equal(image.headers.get('cache-control'), 'public, max-age=31536000, immutable');
+    assert.equal(image.headers.get('etag'), `"${testImage.sha256}"`);
+    assert.deepEqual(Buffer.from(await image.arrayBuffer()), method === 'HEAD' ? Buffer.alloc(0) : png);
+  }
+  assert.equal(calls.length, 13, 'controlled assets must not contact Squarespace');
+  console.log('SEO injector workerd smoke passed: platform aliases, canonical sitemap, versioned PNG/CSS, compressed metadata, privacy/CSP/cookies, and one-fetch forms.');
 } finally {
   await runtime.dispose();
 }

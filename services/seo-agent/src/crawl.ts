@@ -7,6 +7,7 @@
  */
 
 import { VERSION } from './version.js';
+import { canonicalHomepagePath } from './pagepath.js';
 
 const USER_AGENT = `seo-agent/${VERSION} (self-audit; +https://github.com/awizemann/seo-agent)`;
 const FETCH_CONCURRENCY = 5;
@@ -62,7 +63,7 @@ function aliasOrigins(aliases: readonly string[]): Set<string> {
  * Same-origin only unless an explicit HTTPS origin alias is supplied. Aliases
  * identify stale sitemap locations, never fetch destinations. Exported for tests.
  */
-export function parseSitemap(xml: string, origin: string, aliases: readonly string[] = []): ParsedSitemap {
+export function parseSitemap(xml: string, origin: string, aliases: readonly string[] = [], homepagePaths: readonly string[] = []): ParsedSitemap {
   const canonical = parseAbsoluteHttpUrl(origin);
   if (!canonical) return { entries: [], sitemaps: [] };
   const allowedAliases = aliasOrigins(aliases);
@@ -78,7 +79,12 @@ export function parseSitemap(xml: string, origin: string, aliases: readonly stri
   for (const block of xml.match(/<url>[\s\S]*?<\/url>/g) ?? []) {
     const loc = normalizeLoc(block.match(/<loc>\s*([^<]+?)\s*<\/loc>/)?.[1]);
     if (!loc) continue;
-    entries.push({ loc, lastmod: block.match(/<lastmod>\s*([^<]+?)\s*<\/lastmod>/)?.[1] ?? null });
+    const page = new URL(loc);
+    // A verified homepage alias always targets the canonical root, including
+    // when the stale sitemap location came from an allowed origin alias.
+    const pageLoc = canonicalHomepagePath(page.pathname, homepagePaths) === '/' && page.pathname !== '/'
+      ? `${canonical.origin}/` : loc;
+    entries.push({ loc: pageLoc, lastmod: block.match(/<lastmod>\s*([^<]+?)\s*<\/lastmod>/)?.[1] ?? null });
   }
   const sitemaps: string[] = [];
   for (const block of xml.match(/<sitemap>[\s\S]*?<\/sitemap>/g) ?? []) {
@@ -183,6 +189,7 @@ async function fetchPage(entry: SitemapEntry): Promise<PageSnapshot> {
 export async function runCrawl(env: Env, runId: number): Promise<{ runId: number; snapshots: PageSnapshot[] }> {
   const origin = new URL(env.SITE_URL).origin;
   const aliases = env.SITEMAP_ORIGIN_ALIASES?.split(',').map((alias) => alias.trim()).filter(Boolean) ?? [];
+  const homepagePaths = env.HOMEPAGE_PATH_ALIASES?.split(',').map((path) => path.trim()).filter(Boolean) ?? [];
   const sitemapRes = await fetch(`${origin}/sitemap.xml`, {
     headers: { 'user-agent': USER_AGENT },
     signal: AbortSignal.timeout(PAGE_TIMEOUT_MS),
@@ -190,7 +197,7 @@ export async function runCrawl(env: Env, runId: number): Promise<{ runId: number
   });
   if (!sitemapRes.ok) throw new Error(`sitemap fetch failed: ${sitemapRes.status}`);
 
-  const root = parseSitemap(await sitemapRes.text(), origin, aliases);
+  const root = parseSitemap(await sitemapRes.text(), origin, aliases, homepagePaths);
   let rawEntries = root.entries;
   // <sitemapindex>: fetch one level of same-origin child sitemaps and merge.
   if (rawEntries.length === 0 && root.sitemaps.length > 0) {
@@ -204,7 +211,7 @@ export async function runCrawl(env: Env, runId: number): Promise<{ runId: number
             redirect: 'manual',
           });
           if (!r.ok) return [] as SitemapEntry[];
-          return parseSitemap(await r.text(), origin, aliases).entries;
+          return parseSitemap(await r.text(), origin, aliases, homepagePaths).entries;
         } catch {
           return [] as SitemapEntry[];
         }

@@ -247,7 +247,7 @@ export async function aeoChecks(env: Env, snapshots: PageSnapshot[]): Promise<Tr
   if (llms.error) {
     add('/llms.txt', 'aeo_check_error', 'info', `llms.txt fetch failed: ${llms.error}`);
   } else if (llmsState === 'missing') {
-    add('/llms.txt', 'llms_txt_missing', 'medium', 'no /llms.txt — a markdown index of your content for AI agents; cheap to serve and some agent tooling fetches it');
+    add('/llms.txt', 'llms_txt_missing', 'info', 'no /llms.txt — optional context for tools that explicitly use it; not required for Google Search indexing or ranking');
   } else if (llmsState === 'soft_404') {
     add('/llms.txt', 'llms_txt_soft_404', 'high', `GET /llms.txt answers HTTP ${llms.status} with HTML (a catch-all shell?) — agents that request it get a misleading non-answer; serve a real text file or a clean 404`);
   }

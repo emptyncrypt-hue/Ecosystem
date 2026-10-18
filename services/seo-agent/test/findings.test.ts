@@ -1,6 +1,38 @@
 import { describe, it, expect } from 'vitest';
-import { mutedKeys } from '../src/rules';
+import { mutedKeys, runRules } from '../src/rules';
+import type { PageSnapshot } from '../src/crawl';
 import { remediationFor, findingTransitionError } from '../src/actions';
+
+it('refreshes severity of an existing open finding without reopening or rewriting its history', async () => {
+  const mutations: Array<{ sql: string; bindings: unknown[] }> = [];
+  const snapshot: PageSnapshot = {
+    path: '/', status: 200, title: 'DuneSub Ecosystem', description: 'DuneSub Ecosystem combines policy tools, Cloudflare SEO automation, and verified integrations with approvals for metadata changes.',
+    canonical: 'https://www.dunesub.de/', ogImage: 'https://www.dunesub.de/social.png', ogType: 'website',
+    jsonldTypes: [], noindex: false, lastmod: null, error: null,
+  };
+  const env = { SITE_URL: 'https://www.dunesub.de', HOMEPAGE_PATH_ALIASES: '/home', DB: {
+    prepare(sql: string) {
+      const statement = { sql, bindings: [] as unknown[], bind(...values: unknown[]) { return { ...this, bindings: values }; },
+        async first() { return { id: 4 }; },
+        async all() { return { results: sql.startsWith('SELECT path FROM page_snapshots') ? [{ path: '/home' }]
+          : sql.startsWith('SELECT id, path, rule FROM findings') ? [{ id: 7, path: '/llms.txt', rule: 'llms_txt_missing' }]
+          : [{ id: 7, path: '/llms.txt', rule: 'llms_txt_missing', status: 'open' }] }; },
+      };
+      return statement;
+    },
+    async batch(statements: typeof mutations) { mutations.push(...statements); return []; },
+  } } as unknown as Env;
+  const result = await runRules(env, 5, [snapshot], [{ path: '/llms.txt', rule: 'llms_txt_missing', severity: 'info', detail: 'Optional resource.' }]);
+  expect(result).toEqual({ opened: 0, resolved: 0, open: 1 });
+  expect(mutations).toHaveLength(1);
+  expect(mutations[0].sql).toBe("UPDATE findings SET severity = ?, detail = ? WHERE id = ? AND status = 'open'");
+  expect(mutations[0].bindings).toEqual(['info', 'Optional resource.', 7]);
+
+  // Homepage equivalence is explicit: unrelated /about still requires its own canonical.
+  mutations.length = 0;
+  await runRules(env, 6, [{ ...snapshot, path: '/about' }]);
+  expect(mutations.some(({ bindings }) => bindings[2] === '/about' && bindings[3] === 'canonical_mismatch')).toBe(true);
+});
 
 // --- mutedKeys: the dismiss "mute until restored" rule, keyed (path, rule) -----
 describe('mutedKeys', () => {

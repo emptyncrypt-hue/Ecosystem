@@ -91,16 +91,37 @@ describe('parseSitemap', () => {
       { loc: `${ORIGIN}//other.example/home?x=1`, lastmod: null },
     ]);
   });
+
+  it('normalizes only verified homepage page paths, including allowed stale origins', () => {
+    const xml = `<urlset>
+      <url><loc>https://legacy.example/home?view=public#top</loc></url>
+      <url><loc>https://example.com/home</loc></url>
+      <url><loc>https://example.com/home/</loc></url>
+      <url><loc>https://example.com/home/about</loc></url>
+      <url><loc>https://example.com/homepage</loc></url>
+      <url><loc>https://untrusted.example/home</loc></url>
+    </urlset><sitemapindex><sitemap><loc>https://legacy.example/home</loc></sitemap></sitemapindex>`;
+    expect(parseSitemap(xml, ORIGIN, ['https://legacy.example'], ['/home'])).toEqual({
+      entries: [
+        { loc: `${ORIGIN}/`, lastmod: null }, { loc: `${ORIGIN}/`, lastmod: null },
+        { loc: `${ORIGIN}/home/`, lastmod: null }, { loc: `${ORIGIN}/home/about`, lastmod: null },
+        { loc: `${ORIGIN}/homepage`, lastmod: null },
+      ],
+      // A page alias must not rewrite a child sitemap resource.
+      sitemaps: [`${ORIGIN}/home`],
+    });
+  });
 });
 
 describe('runCrawl sitemap aliases', () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  function environment(aliases?: string): Env {
+  function environment(aliases?: string, homepagePaths?: string): Env {
     const statement = { bind: vi.fn().mockReturnThis(), run: vi.fn().mockResolvedValue({ success: true }) };
     return {
       SITE_URL: ORIGIN,
       SITEMAP_ORIGIN_ALIASES: aliases,
+      HOMEPAGE_PATH_ALIASES: homepagePaths,
       DB: { prepare: vi.fn(() => statement), batch: vi.fn().mockResolvedValue([]) },
     } as unknown as Env;
   }
@@ -166,6 +187,20 @@ describe('runCrawl sitemap aliases', () => {
     vi.stubGlobal('fetch', fetchMock);
     await expect(runCrawl(environment('https://legacy.example'), 45)).rejects.toThrow('sitemap parsed to zero URLs');
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([`${ORIGIN}/sitemap.xml`, `${ORIGIN}/child.xml`]);
+  });
+
+  it('crawls the canonical homepage once when the sitemap lists it with a verified alias', async () => {
+    const fetchMock = vi.fn(async (input: string) => {
+      if (input === `${ORIGIN}/sitemap.xml`) return new Response(`<urlset>
+        <url><loc>https://legacy.example/home</loc></url><url><loc>${ORIGIN}/</loc></url>
+      </urlset>`);
+      if (input === `${ORIGIN}/`) return new Response('home', { headers: { 'content-type': 'text/plain' } });
+      throw new Error(`Unexpected request: ${input}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const result = await runCrawl(environment('https://legacy.example', '/home'), 46);
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([`${ORIGIN}/sitemap.xml`, `${ORIGIN}/`]);
+    expect(result.snapshots.map((snapshot) => snapshot.path)).toEqual(['/']);
   });
 });
 

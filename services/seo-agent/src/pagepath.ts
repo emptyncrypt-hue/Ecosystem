@@ -1,3 +1,9 @@
+/** Map only verified homepage paths; unrelated pages keep their own identity. */
+export function canonicalHomepagePath(path: string, aliases: readonly string[] = []): string {
+  return aliases.some((alias) => alias.length <= 200 && /^\/(?!\/)[a-zA-Z0-9/_-]+$/.test(alias)
+    && !alias.includes('//') && path === alias) ? '/' : path;
+}
+
 /**
  * pageToPath — reconcile the two grains the analytics layer joins on:
  * gsc_daily.page is an ABSOLUTE URL (e.g. https://site.com/articles/x/?utm=1)

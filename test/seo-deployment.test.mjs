@@ -99,6 +99,22 @@ test('sitemap aliases are explicit HTTPS origins and are passed only to the craw
   ]) assert.throws(() => validateConfig({ ...config, sitemapOriginAliases }), /sitemapOriginAliases/);
 });
 
+test('site context and verified homepage paths are validated and reach the Worker', () => {
+  const description = 'DuneSub Ecosystem combines policy tools, Cloudflare SEO automation, and verified integrations with approvals for metadata changes.';
+  const vars = buildWranglerConfig({ ...config, siteDescription: description, homepagePathAliases: ['/home', '/home'] }).vars;
+  assert.equal(vars.SITE_DESCRIPTION, description);
+  assert.equal(vars.HOMEPAGE_PATH_ALIASES, '/home');
+  assert.equal(vars.AUTO_APPLY_FIELDS, '');
+  assert.equal(buildWranglerConfig(config).vars.SITE_DESCRIPTION, '');
+  for (const siteDescription of ['', null, 'x'.repeat(501), 'secret\nline', '<script>']) {
+    assert.throws(() => validateConfig({ ...config, siteDescription }), /siteDescription/);
+  }
+  for (const homepagePathAliases of [
+    '/home', [null], ['/'], ['//elsewhere.example'], ['https://elsewhere.example/home'], ['/home?view=1'],
+    ['/home#section'], ['/h%6fme'], ['/../home'], ['/a//home'], ['/a\\home'], Array(6).fill('/home'),
+  ]) assert.throws(() => validateConfig({ ...config, homepagePathAliases }), /homepagePathAliases/);
+});
+
 test('deployment missing or reused credentials causes no API call or generated-file mutation', async t => {
   const rootDir = await fixture(t);
   const target = join(rootDir, 'services/seo-agent/wrangler.jsonc');

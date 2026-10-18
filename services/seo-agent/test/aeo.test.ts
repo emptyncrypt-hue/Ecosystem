@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { parseRobots, robotsDecision, hasExplicitAiPolicy, pickSample, dayOfYear } from '../src/aeo';
+import { describe, it, expect, vi } from 'vitest';
+import { aeoChecks, parseRobots, robotsDecision, hasExplicitAiPolicy, pickSample, dayOfYear } from '../src/aeo';
 
 describe('parseRobots + robotsDecision', () => {
   const txt = `
@@ -35,6 +35,18 @@ Disallow: /private
   it('treats an empty Disallow: as allow-all', () => {
     expect(robotsDecision(parseRobots('User-agent: *\nDisallow:'), 'AnyBot', '/')).toBe('allow');
   });
+});
+
+it('treats a missing optional llms.txt as informational', async () => {
+  const fetchMock = vi.fn(async (url: string) => url.endsWith('/robots.txt')
+    ? new Response('User-agent: GPTBot\nAllow: /', { headers: { 'content-type': 'text/plain' } })
+    : new Response('Not found', { status: 404 }));
+  vi.stubGlobal('fetch', fetchMock);
+  try {
+    const findings = await aeoChecks({ SITE_URL: 'https://www.dunesub.de' } as Env, []);
+    expect(findings).toEqual([expect.objectContaining({ rule: 'llms_txt_missing', severity: 'info', path: '/llms.txt' })]);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  } finally { vi.unstubAllGlobals(); }
 });
 
 describe('hasExplicitAiPolicy', () => {

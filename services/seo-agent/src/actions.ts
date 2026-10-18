@@ -14,6 +14,7 @@ import { applyOverride, revertChange } from './overrides.js';
 import { telemetrySummary, telemetryFindings, pruneTelemetry, rollupTelemetryWeekly, listCrawlerHits as telemetryHits } from './telemetry.js';
 import { runCitationProbes, citationFindings, citationConfig, alreadyCheckedToday } from './citations.js';
 import { impactFindings } from './impact.js';
+import { canonicalHomepagePath } from './pagepath.js';
 
 export class ApiError extends Error {
   constructor(
@@ -437,6 +438,7 @@ export async function createProposal(
 ) {
   const field = args.field || 'description';
   if (!args.path || !args.value) throw new ApiError('path and value required', 400);
+  const path = canonicalHomepagePath(args.path, siteConfig(env).homepagePathAliases);
   if (field !== 'description' && field !== 'title') throw new ApiError('field must be description or title', 400);
   if (field === 'description') {
     const reason = validateDescription(args.value);
@@ -447,7 +449,7 @@ export async function createProposal(
     if (reason) throw new ApiError(`invalid title: ${reason}`, 400);
   }
   const snap = await env.DB.prepare('SELECT title, description FROM page_snapshots WHERE path = ? ORDER BY id DESC LIMIT 1')
-    .bind(args.path)
+    .bind(path)
     .first<{ title: string | null; description: string | null }>();
   const row = await env.DB.prepare(
     `INSERT INTO proposals (created_at, path, field, current_value, proposed_value, rationale, model)
@@ -455,7 +457,7 @@ export async function createProposal(
   )
     .bind(
       new Date().toISOString(),
-      args.path,
+      path,
       field,
       (field === 'description' ? snap?.description : snap?.title) ?? null,
       args.value,
@@ -467,6 +469,7 @@ export async function createProposal(
 
 export async function dryRunDraft(env: Env, path: string | undefined) {
   if (!path) throw new ApiError('path required', 400);
+  path = canonicalHomepagePath(path, siteConfig(env).homepagePathAliases);
   const snap = await env.DB.prepare('SELECT title, description FROM page_snapshots WHERE path = ? ORDER BY id DESC LIMIT 1')
     .bind(path)
     .first<{ title: string | null; description: string | null }>();
