@@ -108,7 +108,10 @@ export async function scanRepository({ root = process.cwd(), target, policy = BA
   const addFinding = (relativePath, line, rule) => result.findings.push({ path: relativePath, line, rule });
 
   async function inspectFile(absolutePath, relativePath, expected) {
-    if (/^\.env(?:\..+)?$/.test(path.basename(absolutePath)) && path.basename(absolutePath) !== '.env.example') {
+    const basename = path.basename(absolutePath);
+    const secretFile = basename === '.env' || basename.startsWith('.env.')
+      || basename === '.dev.vars' || basename.startsWith('.dev.vars.');
+    if (secretFile && basename !== '.env.example' && basename !== '.dev.vars.example') {
       addFinding(relativePath, 1, 'sensitive-env-file');
     }
     if (expected.size > configuration.maxFileBytes) {

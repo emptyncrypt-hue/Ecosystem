@@ -1,0 +1,104 @@
+{
+  // Copy this file to wrangler.jsonc and fill in your account-specific values.
+  // wrangler.jsonc is gitignored so your ids stay out of version control.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "seo-agent",
+  "main": "./src/index.ts",
+  "compatibility_date": "2025-06-17",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "upload_source_maps": true,
+
+  // Daily crawl. Pick a time shortly after your content publishes so newly-live
+  // pages are onboarded the same run (cron is UTC).
+  "triggers": { "crons": ["17 6 * * *"] },
+
+  // Create with: wrangler d1 create seo-agent-db  → paste the database_id.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "seo-agent-db",
+      "database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+    }
+  ],
+
+  // Create with: wrangler kv namespace create SEO_OVERRIDES  → paste the id.
+  // Bind this SAME namespace in your site's injector so approved overrides apply.
+  "kv_namespaces": [
+    {
+      "binding": "OVERRIDES",
+      "id": "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+    }
+  ],
+
+  "ai": { "binding": "AI" },
+
+  // Create with: wrangler queues create seo-agent-drafts
+  // Drafting runs on this queue (one proposal per consumer invocation), so a
+  // slow/variable Workers AI call never stalls a run or blows an invocation budget.
+  "queues": {
+    "producers": [{ "binding": "DRAFT_QUEUE", "queue": "seo-agent-drafts" }],
+    "consumers": [{ "queue": "seo-agent-drafts", "max_batch_size": 1, "max_batch_timeout": 5, "max_retries": 3 }]
+  },
+
+  "vars": {
+    // --- required ---
+    "SITE_URL": "https://example.com",
+
+    // --- site profile (optional; sensible fallbacks derived from SITE_URL) ---
+    "SITE_NAME": "Example",
+    "SITE_DESCRIPTION": "a description of the site, woven into the AI drafting prompt",
+
+    // --- Google Search Console (optional; sensing is dormant without the SA secret) ---
+    // Domain property: "sc-domain:example.com". URL-prefix property: the full URL.
+    "GSC_PROPERTY": "sc-domain:example.com",
+
+    // --- model + policy ---
+    "AI_MODEL": "@cf/zai-org/glm-4.7-flash",
+    // Comma-separated fields that may apply WITHOUT approval (e.g. "description").
+    // Empty = every proposal requires explicit approval (recommended to start).
+    "AUTO_APPLY_FIELDS": "",
+    "MAX_PROPOSALS_PER_RUN": "8",
+
+    // --- title heuristics (optional; leave "" to disable) ---
+    // Brand suffix your injector appends to <title>, e.g. " | Example".
+    "TITLE_BRAND_SUFFIX": "",
+    // Your SPA shell's static <title>, used to detect injection regressions.
+    "SHELL_TITLE": "",
+
+    // --- richer drafting context (optional; both required to enable) ---
+    // Content detail-page prefix, e.g. "/articles/" or "/blog/".
+    "ARTICLE_PATH_PREFIX": "",
+    // JSON endpoint template with {slug} returning { excerpt?, content? }.
+    "ARTICLE_API_TEMPLATE": "",
+
+    // --- AEO / GEO checks (on by default; see README "AEO / GEO checks") ---
+    // llms.txt presence/soft-404, robots.txt AI-crawler policy, and an AI-UA
+    // deliverability sample (are pages readable by non-JS AI crawlers?).
+    // Set "false" to disable.
+    "AEO_CHECKS": "true",
+    // UA for the deliverability sample; "" = a GPTBot user agent.
+    "AEO_BOT_UA": "",
+
+    // --- citation probes (optional; see README "Citation probes") ---
+    // The queries you want AI engines to cite you for: a JSON array, or
+    // |-separated text. Empty = probes off. Needs at least one engine key
+    // (secrets below). Gemini grounding needs a BILLING-LINKED Google project
+    // (unbilled keys 429); at this volume the cost is ~$0 either way.
+    "CITATION_QUERIES": "",
+    // UTC weekday the daily cron probes on (0=Sun … 6=Sat). Out-of-range or
+    // non-numeric values (e.g. "7") fall back to Monday (1). Default Monday.
+    "CITATION_CRON_DAY": "1"
+  }
+
+  // Secrets (wrangler secret put <NAME>):
+  //   AGENT_TOKEN               — required; gates the API, MCP, and dashboard
+  //   GSC_SERVICE_ACCOUNT_JSON  — optional; enables Search Console ingestion
+  //   GEMINI_API_KEY            — optional; citation probes via Google-Search
+  //                               grounding (free tier — the default engine)
+  //   PERPLEXITY_API_KEY        — optional; citation probes via Perplexity Sonar
+  //   OPENAI_API_KEY            — optional; citation probes via Responses web_search
+  //   ANTHROPIC_API_KEY         — optional; citation probes via Claude web_search
+  // Model overrides (vars, optional): CITATION_GEMINI_MODEL,
+  // CITATION_PERPLEXITY_MODEL, CITATION_OPENAI_MODEL, CITATION_ANTHROPIC_MODEL.
+}

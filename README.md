@@ -2,7 +2,7 @@
 
 Device Policy Framework and Dune-Sub repository integration tools.
 
-The repository includes the imported framework documents, maintained configuration examples, and a dependency-free Node.js toolchain for artifact validation, credential-pattern scanning, and guarded GitHub synchronization.
+The repository includes the imported framework documents, maintained configuration examples, and a dependency-free Node.js toolchain for artifact validation, credential-pattern scanning, and guarded GitHub synchronization. The SEO service is maintained in `services/seo-agent` with its own pinned Cloudflare tooling.
 
 ## Run the checks
 
@@ -30,6 +30,21 @@ The tool checks the expected head before creating a commit, preserves unrelated 
 
 Cloud Build source snapshots may omit `.git`. [cloudbuild.yml](examples/deployment/cloudbuild.yml) uses the explicit `--snapshot` mode to run checks and create a local bundle from that workspace. Remote publication uses the separate explicit push command.
 
+## SEO agent
+
+The included Cloudflare Worker is configured for `https://dunesub.de`. It audits sitemap pages, detects SEO and AI-crawler issues, drafts metadata proposals, and provides an authenticated review dashboard. Approved changes can be applied through the site's shared-KV injector.
+
+Use Node.js 24, then run these commands from the repository root:
+
+```sh
+npm run seo:install
+npm run seo:verify
+```
+
+Verification includes a real local Worker test with HTTP, D1, KV, approvals, and rollback. The manual [deployment workflow](.github/workflows/deploy-seo-agent.yml) and `npm run seo:deploy` provision and deploy the service when `CLOUDFLARE_API_TOKEN` and the separate dashboard `AGENT_TOKEN` are configured as secrets. [Deployment instructions](docs/seo-agent.md) cover credentials, configuration, and connecting the public site.
+
+The Squarespace connection uses `services/seo-injector`, a route Worker that preserves the public hostname and reads the agent's approved overrides. Run `npm run seo:injector:status` to check the zone, DNS permissions, and records, then `npm run seo:injector:deploy` once the Cloudflare zone is active and the Squarespace DNS records are proxied. Deployment checks those prerequisites before publishing.
+
 ## Configuration and documentation
 
 - [Integration verification and deployment prerequisites](docs/integration_verification.md)
@@ -37,9 +52,10 @@ Cloud Build source snapshots may omit `.git`. [cloudbuild.yml](examples/deployme
 - [Imported-source provenance and current hashes](docs/source_manifest.json)
 - [CMEK organization policy setup](config/README.md)
 - [Active verification workflow](.github/workflows/verify.yml)
+- [SEO service setup, local verification, and deployment](docs/seo-agent.md)
 - [Node ACL contract](contracts/node_acl_smart_contract.sol)
 
-The active workflow runs integration tests, builds and verifies a sync bundle, parses configuration files, generates a DOCX blueprint, compiles the ACL contract, and validates the pinned Terraform provider configuration.
+The active workflow runs repository and SEO service tests, builds and verifies a sync bundle, parses configuration files, generates a DOCX blueprint, compiles the ACL contract, and validates the pinned Terraform provider configuration.
 
 Generate a blueprint with Python and the pinned document dependency:
 

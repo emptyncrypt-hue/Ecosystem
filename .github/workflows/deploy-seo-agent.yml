@@ -1,0 +1,39 @@
+name: Deploy DuneSub SEO agent
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dunesub-seo-agent-deployment
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: seo-production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: services/seo-agent/package-lock.json
+      - name: Install pinned Worker tooling
+        run: npm run seo:install
+      - name: Verify repository and Worker
+        run: |
+          npm run check
+          npm run seo:verify
+      - name: Provision and deploy the Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          AGENT_TOKEN: ${{ secrets.AGENT_TOKEN }}
+        run: npm run seo:deploy
+      - name: Verify deployed status
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          AGENT_TOKEN: ${{ secrets.AGENT_TOKEN }}
+        run: npm run seo:status

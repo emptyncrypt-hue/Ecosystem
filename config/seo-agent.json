@@ -1,0 +1,16 @@
+{
+  "siteUrl": "https://www.dunesub.de",
+  "sitemapOriginAliases": [
+    "https://sepia-carnation-yj5e.squarespace.com"
+  ],
+  "homepagePathAliases": [
+    "/home"
+  ],
+  "siteName": "DuneSub Ecosystem",
+  "siteDescription": "DuneSub Ecosystem combines policy tools, Cloudflare SEO automation, and verified integrations with approvals for metadata changes.",
+  "accountId": "c01bd8dd02ec6b1dd3a05ea21649d1b8",
+  "workerName": "dunesub-seo-agent",
+  "databaseName": "dunesub-seo-agent-db",
+  "queueName": "dunesub-seo-agent-drafts",
+  "namespaceTitle": "dunesub-seo-overrides"
+}

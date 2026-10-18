@@ -178,7 +178,9 @@ export function validateBundle(bundle, policies) {
     if (seen.has(file.path)) errors.push(`Duplicate bundle path: ${file.path}`);
     seen.add(file.path);
     const basename = path.posix.basename(file.path);
-    if ((basename === '.env' || basename.startsWith('.env.')) && basename !== '.env.example') errors.push('Environment secret files cannot be synchronized.');
+    const secretFile = basename === '.env' || basename.startsWith('.env.')
+      || basename === '.dev.vars' || basename.startsWith('.dev.vars.');
+    if (secretFile && basename !== '.env.example' && basename !== '.dev.vars.example') errors.push('Environment secret files cannot be synchronized.');
     if (file.mode !== '100644') errors.push(`Unsupported file mode: ${file.path}`);
     if (typeof file.content !== 'string' || !Number.isSafeInteger(file.bytes) || file.bytes < 0 ||
         typeof file.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(file.sha256)) {

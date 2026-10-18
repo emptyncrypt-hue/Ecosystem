@@ -86,16 +86,16 @@ test('CLI fails on findings and never echoes credentials or file contents', asyn
   assert.deepEqual(JSON.parse(response.stdout).findings, [{ path: 'key.txt', line: 1, rule: 'github-token' }]);
 });
 
-test('flags sensitive env files regardless of ignore metadata, with only .env.example exempt', async t => {
+test('flags environment and Wrangler secret files regardless of ignore metadata, with example templates exempt', async t => {
   const root = await fixture(t);
-  await put(root, '.gitignore', '.env\n.env.production\n');
-  await put(root, '.env', 'PASSWORD=replace-me');
-  await put(root, '.env.production', 'PASSWORD=replace-me');
-  await put(root, 'nested/.env.local', 'PASSWORD=replace-me');
+  const sensitivePaths = ['.dev.vars', '.dev.vars.', '.dev.vars.production', '.env', '.env.production', 'nested/.dev.vars.local', 'nested/.env.local'];
+  await put(root, '.gitignore', sensitivePaths.join('\n') + '\n');
+  for (const file of sensitivePaths) await put(root, file, 'PASSWORD=replace-me');
   await put(root, '.env.example', 'OPENAI_API_KEY=replace-me');
+  await put(root, '.dev.vars.example', 'AGENT_TOKEN=replace-me');
   await put(root, '.git/info/exclude', '.env\n');
   const result = await scanRepository({ root });
-  assert.deepEqual(result.findings, ['.env', '.env.production', 'nested/.env.local'].map(file => ({ path: file, line: 1, rule: 'sensitive-env-file' })));
+  assert.deepEqual(result.findings, sensitivePaths.map(file => ({ path: file, line: 1, rule: 'sensitive-env-file' })));
   assert.deepEqual(result.errors, []);
 });
 
@@ -116,6 +116,7 @@ test('skips the documented excluded directories while still scanning source and 
 test('permits harmless placeholders and historical partial bearer tokens', async t => {
   const root = await fixture(t);
   await put(root, '.env.example', 'OPENAI_API_KEY=replace-me\nGITHUB_TOKEN=<token>\n');
+  await put(root, '.dev.vars.example', 'AGENT_TOKEN=replace-me\n');
   await put(root, 'docs/example.txt', 'Authorization: Bearer eyJhbGciOi...\nghp_<placeholder>\nsk-proj-<replace-with-key>\nAKIA<example>\n');
   const result = await scanRepository({ root });
   assert.equal(result.ok, true);
