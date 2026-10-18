@@ -2,7 +2,7 @@
 
 Ecosystem includes the Cloudflare Worker in [`services/seo-agent`](../services/seo-agent), including its API, dashboard, sitemap crawler, AI drafting pipeline, database schema, tests, and optional site injector. The upstream MIT license is retained. [`UPSTREAM.json`](../services/seo-agent/UPSTREAM.json) records the imported revision, original file hashes, and integration changes.
 
-The service is configured for `https://dunesub.de` in [`config/seo-agent.json`](../config/seo-agent.json), using Cloudflare account `c01bd8dd02ec6b1dd3a05ea21649d1b8`. The control Worker is named `dunesub-seo-agent`. Its API and dashboard use a `workers.dev` URL assigned by Cloudflare; that URL is separate from the public site being audited.
+The service is configured for the canonical origin `https://www.dunesub.de` in [`config/seo-agent.json`](../config/seo-agent.json), using Cloudflare account `c01bd8dd02ec6b1dd3a05ea21649d1b8`. The apex domain redirects to this origin. The control Worker is named `dunesub-seo-agent`. Its API and dashboard use a `workers.dev` URL assigned by Cloudflare; that URL is separate from the public site being audited.
 
 ## Verify locally
 
@@ -98,3 +98,5 @@ Local verification establishes that the service builds and its local storage/API
 On 2026-10-17, a direct check of `https://dunesub.de/sitemap.xml` returned HTTP 401 and a Squarespace **Private Site** HTML page. The upstream crawler needs a publicly readable XML sitemap. Make the intended site and its sitemap accessible before expecting successful audits; no site visibility settings were changed by this integration.
 
 On 2026-10-18, the control Worker was deployed and its authenticated status verified at `https://dunesub-seo-agent.plamen-r-mihaylov.workers.dev`. The website connection check found the Cloudflare full zone pending, Google Domains authoritative nameservers, DNS API HTTP 403, a Squarespace “Coming Soon” homepage, sitemap HTTP 401, and a robots file blocking all crawlers. These are recorded observations, not evidence that the website connection is active.
+
+After the owner connected the published Squarespace site `sepia-carnation-yj5e.squarespace.com`, fresh checks showed the apex redirecting to `https://www.dunesub.de`, a public homepage, a readable XML sitemap, and a robots file permitting general crawling. The control configuration follows that canonical `www` origin. The XML sitemap initially retained its old built-in Squarespace URL after the domain change; verify its `<loc>` values have refreshed before starting the first crawl. Website publication and the optional Cloudflare metadata-injector connection are separate prerequisites.
