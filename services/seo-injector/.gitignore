@@ -1,0 +1,9 @@
+# Generated configuration contains deployment-specific zone and shared KV IDs.
+wrangler.jsonc
+node_modules/
+dist/
+.wrangler/
+.dev.vars
+.dev.vars.*
+.env
+.env.*

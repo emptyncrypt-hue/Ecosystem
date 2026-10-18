@@ -56,7 +56,36 @@ The Worker can audit the public site's sitemap and prepare proposals once deploy
 
 For a site already served by a Worker, merge `override:<pathname>` values into its computed title and description using the upstream injector contract. Preserve its existing metadata when KV is missing or unavailable. For another origin behind Cloudflare, the included [`injector/`](../services/seo-agent/injector) provides a proxy Worker.
 
-The proxy injector needs the actual origin host and zone route. Identify the origin before routing `dunesub.de/*` through it; using `dunesub.de` as both its route and origin creates a proxy loop. Deploying the control Worker does not install that site route.
+For this Squarespace site, use the maintained [`services/seo-injector`](../services/seo-injector) route Worker. It calls `fetch(request)` with the original public hostname, method, body, and cookies, so Squarespace continues to select the correct site. Cloudflare routes send this subrequest to the origin in the zone's DNS records without invoking the same route again. This behavior applies to a **Worker route**, not a Worker Custom Domain. No alternate Squarespace origin hostname is required. See [Cloudflare route behavior and prerequisites](https://developers.cloudflare.com/workers/configuration/routing/routes/).
+
+The injector reads the deployed control Worker's `OVERRIDES` namespace as `SEO_OVERRIDES`. It applies approved title and description values to existing metadata tags in successful GET HTML responses. Redirects, assets, sitemap, robots, authorization errors, cookies, forms, canonical links, and structured data keep their original behavior. It never retries an origin request when metadata processing fails. Markdown probing is not enabled for Squarespace.
+
+Uncompressed, gzip, and Brotli HTML can be rewritten within a 2 MiB decoded-body limit and a two-second processing deadline. Other content encodings and responses exceeding these limits pass through unchanged.
+
+### Publish the Squarespace site
+
+Squarespace must serve a public XML sitemap for audits. In the intended site's **Site Availability** panel, choose **Public** and save. A paid website subscription is required; trial sites and domain parking pages do not provide a sitemap. A homepage that says “Coming Soon” does not establish that a published website exists. See [Squarespace publication](https://support.squarespace.com/hc/en-us/articles/360002088548-Publish-or-hide-your-site) and [sitemap availability](https://support.squarespace.com/hc/en-us/articles/206543547-View-your-site-map).
+
+Verify that `/sitemap.xml` returns XML with public URLs and that `robots.txt` permits crawling. If Squarespace uses `www.dunesub.de` as its canonical origin, align `config/seo-agent.json` with that verified origin before redeploying the control Worker; the crawler filters sitemap URLs by the configured origin. The injector preserves site access controls rather than replacing a blocked sitemap or serving private content.
+
+### Activate Cloudflare and connect the route
+
+The full Cloudflare zone must be **active**, and its website records must be proxied. Preserve all existing DNS records, including mail, verification, and any other subdomains, before changing nameservers at the registrar. The deployment CLI reports the assigned Cloudflare nameservers and checks the website records against Squarespace's current targets. Changing a zone's desired configuration alone does not change its authoritative nameservers.
+
+Required token access includes zone read, DNS read, Workers route write, Workers script write, and access to the control Worker's settings and KV binding. DNS edit is needed when enabling the orange-cloud proxy for existing Squarespace website records. Keep credentials in environment bindings; no credentials belong in this configuration.
+
+```sh
+npm run seo:injector:status
+npm run seo:injector:build
+npm run seo:injector:smoke
+npm run seo:injector:deploy
+```
+
+The deployment command validates the active zone, expected proxied apex and `www` records, existing route conflicts, and the control Worker's shared KV before changing generated configuration or publishing. It installs only `dunesub.de/*` and `www.dunesub.de/*` for `dunesub-seo-injector`; the authenticated dashboard remains on its separate `workers.dev` hostname. The injector has no public `workers.dev` endpoint and is not a Worker Custom Domain. Local builds use placeholder IDs and cannot establish a live connection.
+
+Once it is on the default branch, the manual [Connect DuneSub website to SEO agent](../.github/workflows/connect-seo-website.yml) workflow runs the same checks and deployment using the `seo-production` environment's `CLOUDFLARE_API_TOKEN`. It does not require the dashboard token.
+
+After deployment, verify the homepage, a public nested page, sitemap, assets, redirects, and form handling. An approved test override can then confirm the shared-KV path; remove or revert it after verification. Keep `AUTO_APPLY_FIELDS` empty until a separate decision authorizes automatic changes.
 
 ## Provenance and current state
 
@@ -67,3 +96,5 @@ The existing 25 imported framework artifacts and their provenance manifest remai
 Local verification establishes that the service builds and its local storage/API integration works. A live deployment is established by the deploy command and its authenticated status check; a public-site connection additionally requires the injector verification above.
 
 On 2026-10-17, a direct check of `https://dunesub.de/sitemap.xml` returned HTTP 401 and a Squarespace **Private Site** HTML page. The upstream crawler needs a publicly readable XML sitemap. Make the intended site and its sitemap accessible before expecting successful audits; no site visibility settings were changed by this integration.
+
+On 2026-10-18, the control Worker was deployed and its authenticated status verified at `https://dunesub-seo-agent.plamen-r-mihaylov.workers.dev`. The website connection check found the Cloudflare full zone pending, Google Domains authoritative nameservers, DNS API HTTP 403, a Squarespace “Coming Soon” homepage, sitemap HTTP 401, and a robots file blocking all crawlers. These are recorded observations, not evidence that the website connection is active.

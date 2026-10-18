@@ -79,6 +79,8 @@ jobs:
         run: |
           mkdir -p "$XDG_CONFIG_HOME/.wrangler"
           npm run seo:verify
+          npm run seo:injector:build
+          npm run seo:injector:smoke
 
   terraform:
     runs-on: ubuntu-latest

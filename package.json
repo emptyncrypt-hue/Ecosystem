@@ -24,6 +24,11 @@
     "seo:dev": "npm run seo:configure && npm run dev --prefix services/seo-agent",
     "seo:deploy": "node --use-env-proxy scripts/seo-agent.mjs deploy",
     "seo:status": "node --use-env-proxy scripts/seo-agent.mjs status",
+    "seo:injector:configure": "node scripts/seo-injector.mjs configure",
+    "seo:injector:build": "node --use-env-proxy scripts/seo-injector.mjs build",
+    "seo:injector:smoke": "node scripts/test-seo-injector-runtime.mjs",
+    "seo:injector:status": "node --use-env-proxy scripts/seo-injector.mjs status",
+    "seo:injector:deploy": "node --use-env-proxy scripts/seo-injector.mjs deploy",
     "test": "node scripts/run-tests.mjs",
     "check": "npm run test && npm run validate:payload && npm run security:scan"
   }

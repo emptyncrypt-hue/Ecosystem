@@ -43,6 +43,8 @@ npm run seo:verify
 
 Verification includes a real local Worker test with HTTP, D1, KV, approvals, and rollback. The manual [deployment workflow](.github/workflows/deploy-seo-agent.yml) and `npm run seo:deploy` provision and deploy the service when `CLOUDFLARE_API_TOKEN` and the separate dashboard `AGENT_TOKEN` are configured as secrets. [Deployment instructions](docs/seo-agent.md) cover credentials, configuration, and connecting the public site.
 
+The Squarespace connection uses `services/seo-injector`, a route Worker that preserves the public hostname and reads the agent's approved overrides. Run `npm run seo:injector:status` to check the zone, DNS permissions, and records, then `npm run seo:injector:deploy` once the Cloudflare zone is active and the Squarespace DNS records are proxied. Deployment checks those prerequisites before publishing.
+
 ## Configuration and documentation
 
 - [Integration verification and deployment prerequisites](docs/integration_verification.md)

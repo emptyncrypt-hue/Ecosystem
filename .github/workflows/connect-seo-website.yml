@@ -1,0 +1,38 @@
+name: Connect DuneSub website to SEO agent
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dunesub-seo-injector-deployment
+  cancel-in-progress: false
+
+jobs:
+  connect:
+    runs-on: ubuntu-latest
+    environment: seo-production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: services/seo-agent/package-lock.json
+      - name: Install pinned Worker tooling
+        run: npm run seo:install
+      - name: Verify repository and website injector
+        run: |
+          npm run check
+          npm run seo:injector:build
+          npm run seo:injector:smoke
+      - name: Check website connection prerequisites
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npm run seo:injector:status
+      - name: Connect the verified Squarespace site routes
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npm run seo:injector:deploy
