@@ -59,7 +59,7 @@
     "src/analytics.ts": "7e2affc7656e79618ed8687062c1ac501ca3979972430d31450fc576e61d14f2",
     "src/citations.ts": "cad2c6f634291451800ea087946d562f74c1a2f2a1b4017c7e221a147ddde788",
     "src/config.ts": "a64a3a00ed9f81596056b7685f9ac742442ed8633cf9bad6682bcdc56278760c",
-    "src/crawl.ts": "55ae9eb3028fb414d8306199878ce9964469c6eab34714201013faa0268420da",
+    "src/crawl.ts": "4537b1302edcbe470f3201065016a692f93770ecec6e9380610313d57b3af0a8",
     "src/dashboard.ts": "96cab918a9bef075945b75b1a9a6890bcac563accf01459ae10ffe58d0ce6299",
     "src/gsc.ts": "0547a04be3f54c88037719c1668dfd55e5b891d61f6128f069642ca0d0b1db8c",
     "src/impact.ts": "7f06003973ef3b032ee34a1158bf596f4dede982398e180ee80ff84cdc0f7235",
@@ -74,33 +74,37 @@
     "test/aeo.test.ts": "9ea9abb1da3b77bd186ffbcbff596999747cb9e4889628b0291001534551ffc7",
     "test/analytics.test.ts": "04b6aa7d45245571a6433a1de939c6a2411398b6adda899ecbce536006f1d242",
     "test/citations.test.ts": "c795f9c54f4820eea65b629285a1780a0f1e3a67b4f8ce83e030f67743ad9a9a",
-    "test/crawl.test.ts": "05005a4ddca83f7332f6999b3ef8d74c0326a1992b73b2d2793862d285a35e62",
+    "test/crawl.test.ts": "35fe784c3ff8f556164caee8fab3994116f9bade0f7bed46a7f31eb802dde5b8",
     "test/findings.test.ts": "d5dbcc6ac4ec70b2a10c33a7c1405fa5aafe3015224cf9f224f9e79dee47982b",
     "test/propose.test.ts": "54df717cc6466ce776f9b733d1fcc293f176cb09ddcef805690c4d21de4d7311",
     "test/rules.test.ts": "61801c6a336b55369b73c9733ba81217047b7e75fc3a65eaec8e3c06436051d6",
     "tsconfig.json": "dab2f96028fc3661fc8ad1095a77185342fe2f8683a4c2c8345f961359f260dc",
     "wrangler.example.jsonc": "c71aa181d8038231e68e47fc5d5091547cee5aee66dc167e724f91086cb51362",
-    "env.d.ts": "93d195ff54daca20e260f8a67f3723ff767964e75d9de63e7113da65806662c1"
+    "env.d.ts": "095ae6f50ad1d097654adddb236329ed27742cb35adf0732480391acf4118545"
   },
   "patchedPaths": [
     ".gitignore",
     "package.json",
     "package-lock.json",
-    "tsconfig.json"
+    "tsconfig.json",
+    "src/crawl.ts",
+    "test/crawl.test.ts"
   ],
   "modifications": {
     ".gitignore": "Scope ignores to generated configuration, generated runtime types, dependency and build artifacts, and local secret values.",
     "package.json": "Declare supported Node.js versions, add the Wrangler dry-run build command, and initialize the D1 binding DB.",
     "package-lock.json": "Repair upstream dependency lock metadata for reproducible npm ci; no application behavior change.",
-    "tsconfig.json": "Include permanent environment secret binding declarations for type checks without local secret values."
+    "tsconfig.json": "Include permanent environment secret binding declarations for type checks without local secret values.",
+    "src/crawl.ts": "Normalize sitemap entries and child sitemap URLs from explicitly configured verified HTTPS origin aliases to the canonical origin; require exact safe origins and do not follow sitemap redirects.",
+    "test/crawl.test.ts": "Cover exact origin enforcement, verified alias normalization, canonical-only fetches, and rejection of unsafe aliases and sitemap redirects."
   },
   "addedFiles": {
-    "env.d.ts": "Permanent secret binding declarations; contains names and types, never credential values."
+    "env.d.ts": "Permanent secret binding types and optional sitemap origin alias configuration; contains names and types, never credential values."
   },
   "notes": [
     "originalFiles hashes describe the exact upstream commit, not modified vendored files.",
     "files hashes describe the checked-in vendored files after integration changes; generated runtime and deployment artifacts are excluded.",
     "The root Ecosystem deployment orchestrator generates wrangler.jsonc from config/seo-agent.json.",
-    "Application src, tests, schema, injector, README, LICENSE, and example templates retain original upstream bytes."
+    "Upstream files retain original bytes except the documented patchedPaths; originalFiles hashes remain unchanged for the pinned upstream commit."
   ]
 }

@@ -14,7 +14,7 @@ const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const HEX_ID = /^[a-f0-9]{32}$/i;
 
 export function validateConfig(input) {
-  const keys = ['siteUrl', 'siteName', 'accountId', 'workerName', 'databaseName', 'queueName', 'namespaceTitle'];
+  const keys = ['siteUrl', 'siteName', 'accountId', 'workerName', 'databaseName', 'queueName', 'namespaceTitle', 'sitemapOriginAliases'];
   if (!input || typeof input !== 'object' || Array.isArray(input)
       || Object.keys(input).some(key => !keys.includes(key))) {
     throw new Error('SEO configuration accepts only documented non-secret fields.');
@@ -31,7 +31,22 @@ export function validateConfig(input) {
   if (typeof input.siteName !== 'string' || !input.siteName.trim() || input.siteName.length > 100) {
     throw new Error('A siteName of 1–100 characters is required.');
   }
-  return { ...input, siteUrl: site.origin };
+  let sitemapOriginAliases;
+  if (input.sitemapOriginAliases !== undefined) {
+    if (!Array.isArray(input.sitemapOriginAliases) || input.sitemapOriginAliases.length > 5) {
+      throw new Error('sitemapOriginAliases must contain at most five HTTPS origins.');
+    }
+    sitemapOriginAliases = input.sitemapOriginAliases.map(value => {
+      let alias;
+      try { alias = typeof value === 'string' ? new URL(value) : null; } catch { /* Validated below. */ }
+      if (!alias || alias.protocol !== 'https:' || alias.username || alias.password || alias.search || alias.hash || alias.pathname !== '/') {
+        throw new Error('sitemapOriginAliases accepts HTTPS origins without credentials, paths, queries, or fragments.');
+      }
+      return alias.origin;
+    });
+    sitemapOriginAliases = [...new Set(sitemapOriginAliases)].filter(origin => origin !== site.origin);
+  }
+  return { ...input, siteUrl: site.origin, ...(sitemapOriginAliases !== undefined ? { sitemapOriginAliases } : {}) };
 }
 
 async function readConfig(rootDir) {
@@ -68,6 +83,7 @@ export function buildWranglerConfig(config, resources) {
     },
     vars: {
       SITE_URL: config.siteUrl,
+      ...(config.sitemapOriginAliases?.length ? { SITEMAP_ORIGIN_ALIASES: config.sitemapOriginAliases.join(',') } : {}),
       SITE_NAME: config.siteName,
       SITE_DESCRIPTION: '',
       GSC_PROPERTY: `sc-domain:${new URL(config.siteUrl).hostname}`,

@@ -34,23 +34,56 @@ export type PageSnapshot = {
 
 type SitemapEntry = { loc: string; lastmod: string | null };
 export type ParsedSitemap = { entries: SitemapEntry[]; sitemaps: string[] };
+const XML_ENTITIES: Record<string, string> = { amp: '&', quot: '"', apos: "'", lt: '<', gt: '>' };
+
+function parseAbsoluteHttpUrl(value: string): URL | null {
+  // Reject parser-repaired URLs and userinfo before considering the origin.
+  if (!/^https?:\/\/[^/?#\\\s]+(?:[/?#]|$)/i.test(value) || /[\\\s\u0000-\u001f\u007f]/.test(value)) return null;
+  try {
+    const url = new URL(value);
+    return url.username || url.password ? null : url;
+  } catch {
+    return null;
+  }
+}
+
+function aliasOrigins(aliases: readonly string[]): Set<string> {
+  const origins = new Set<string>();
+  for (const alias of aliases) {
+    const url = parseAbsoluteHttpUrl(alias);
+    if (url?.protocol === 'https:' && url.pathname === '/' && !url.search && !url.hash) origins.add(url.origin);
+  }
+  return origins;
+}
 
 /**
  * Parse ONE sitemap document. A <urlset> yields page entries; a <sitemapindex>
  * yields child sitemap locations (the caller fetches those one level deep).
- * Same-origin only. Exported for tests.
+ * Same-origin only unless an explicit HTTPS origin alias is supplied. Aliases
+ * identify stale sitemap locations, never fetch destinations. Exported for tests.
  */
-export function parseSitemap(xml: string, origin: string): ParsedSitemap {
+export function parseSitemap(xml: string, origin: string, aliases: readonly string[] = []): ParsedSitemap {
+  const canonical = parseAbsoluteHttpUrl(origin);
+  if (!canonical) return { entries: [], sitemaps: [] };
+  const allowedAliases = aliasOrigins(aliases);
+  const normalizeLoc = (loc: string | undefined): string | null => {
+    if (!loc) return null;
+    // Sitemap XML escapes query separators (and other reserved characters).
+    const decoded = loc.replace(/&(amp|quot|apos|lt|gt);/g, (_, entity: string) => XML_ENTITIES[entity]);
+    const url = parseAbsoluteHttpUrl(decoded);
+    if (!url || (url.origin !== canonical.origin && !allowedAliases.has(url.origin))) return null;
+    return `${canonical.origin}${url.pathname}${url.search}${url.hash}`;
+  };
   const entries: SitemapEntry[] = [];
   for (const block of xml.match(/<url>[\s\S]*?<\/url>/g) ?? []) {
-    const loc = block.match(/<loc>\s*([^<]+?)\s*<\/loc>/)?.[1];
-    if (!loc || !loc.startsWith(origin)) continue;
+    const loc = normalizeLoc(block.match(/<loc>\s*([^<]+?)\s*<\/loc>/)?.[1]);
+    if (!loc) continue;
     entries.push({ loc, lastmod: block.match(/<lastmod>\s*([^<]+?)\s*<\/lastmod>/)?.[1] ?? null });
   }
   const sitemaps: string[] = [];
   for (const block of xml.match(/<sitemap>[\s\S]*?<\/sitemap>/g) ?? []) {
-    const loc = block.match(/<loc>\s*([^<]+?)\s*<\/loc>/)?.[1];
-    if (loc && loc.startsWith(origin)) sitemaps.push(loc);
+    const loc = normalizeLoc(block.match(/<loc>\s*([^<]+?)\s*<\/loc>/)?.[1]);
+    if (loc) sitemaps.push(loc);
   }
   return { entries, sitemaps };
 }
@@ -149,13 +182,15 @@ async function fetchPage(entry: SitemapEntry): Promise<PageSnapshot> {
 
 export async function runCrawl(env: Env, runId: number): Promise<{ runId: number; snapshots: PageSnapshot[] }> {
   const origin = new URL(env.SITE_URL).origin;
+  const aliases = env.SITEMAP_ORIGIN_ALIASES?.split(',').map((alias) => alias.trim()).filter(Boolean) ?? [];
   const sitemapRes = await fetch(`${origin}/sitemap.xml`, {
     headers: { 'user-agent': USER_AGENT },
     signal: AbortSignal.timeout(PAGE_TIMEOUT_MS),
+    redirect: 'manual', // never follow a sitemap redirect onto an alias or another host
   });
   if (!sitemapRes.ok) throw new Error(`sitemap fetch failed: ${sitemapRes.status}`);
 
-  const root = parseSitemap(await sitemapRes.text(), origin);
+  const root = parseSitemap(await sitemapRes.text(), origin, aliases);
   let rawEntries = root.entries;
   // <sitemapindex>: fetch one level of same-origin child sitemaps and merge.
   if (rawEntries.length === 0 && root.sitemaps.length > 0) {
@@ -163,9 +198,13 @@ export async function runCrawl(env: Env, runId: number): Promise<{ runId: number
     const nested = await Promise.all(
       children.map(async (loc) => {
         try {
-          const r = await fetch(loc, { headers: { 'user-agent': USER_AGENT }, signal: AbortSignal.timeout(PAGE_TIMEOUT_MS) });
+          const r = await fetch(loc, {
+            headers: { 'user-agent': USER_AGENT },
+            signal: AbortSignal.timeout(PAGE_TIMEOUT_MS),
+            redirect: 'manual',
+          });
           if (!r.ok) return [] as SitemapEntry[];
-          return parseSitemap(await r.text(), origin).entries;
+          return parseSitemap(await r.text(), origin, aliases).entries;
         } catch {
           return [] as SitemapEntry[];
         }

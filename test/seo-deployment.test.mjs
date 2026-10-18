@@ -87,6 +87,18 @@ test('configuration rejects secret fields, account emails, URL credentials, and 
   assert.throws(() => buildWranglerConfig(config, { databaseId: '00000000-0000-0000-0000-000000000000', namespaceId: namespace.id }), /invalid resource/);
 });
 
+test('sitemap aliases are explicit HTTPS origins and are passed only to the crawler', () => {
+  const alias = 'https://sepia-carnation-yj5e.squarespace.com';
+  const normalized = validateConfig({ ...config, sitemapOriginAliases: [alias + '/', alias, config.siteUrl] });
+  assert.deepEqual(normalized.sitemapOriginAliases, [alias]);
+  assert.equal(buildWranglerConfig(normalized).vars.SITEMAP_ORIGIN_ALIASES, alias);
+  assert.equal(buildWranglerConfig(config).vars.SITEMAP_ORIGIN_ALIASES, undefined);
+  for (const sitemapOriginAliases of [
+    alias, [null], ['http://example.com'], ['https://user:pass@example.com'],
+    [alias + '/home'], [alias + '?query=1'], [alias + '#fragment'], Array(6).fill(alias),
+  ]) assert.throws(() => validateConfig({ ...config, sitemapOriginAliases }), /sitemapOriginAliases/);
+});
+
 test('deployment missing or reused credentials causes no API call or generated-file mutation', async t => {
   const rootDir = await fixture(t);
   const target = join(rootDir, 'services/seo-agent/wrangler.jsonc');
