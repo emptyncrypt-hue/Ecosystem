@@ -34,6 +34,7 @@ import { invalidReason, draftAndCreate, type DraftJob } from './propose.js';
 import { analyticsSummary, analyticsPage, analyticsImpact } from './analytics.js';
 import { handleMcp } from './mcp.js';
 import { DASHBOARD_HTML } from './dashboard.js';
+import { INTERNAL_LLMS_PATH, handleInternalLlms, internalLlmsResponse } from './internal-llms.js';
 
 const json = (data: unknown, status = 200): Response => Response.json(data, { status });
 
@@ -75,7 +76,13 @@ export default {
     }
 
     // Everything else (REST + MCP) requires the bearer token.
-    if (!(await authorized(request, env))) return json({ error: 'unauthorized' }, 401);
+    if (!(await authorized(request, env))) {
+      return pathname === INTERNAL_LLMS_PATH
+        ? internalLlmsResponse(request, 401, 'Unauthorized\n')
+        : json({ error: 'unauthorized' }, 401);
+    }
+
+    if (pathname === INTERNAL_LLMS_PATH) return handleInternalLlms(request, env);
 
     if (pathname === '/mcp') return handleMcp(request, env, ctx);
 

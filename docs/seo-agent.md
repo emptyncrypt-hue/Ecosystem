@@ -101,7 +101,7 @@ The generated sharing image is an external deployment asset: 1730×909 PNG, 1,52
 
 The user's explicit approval of the suggested title/description is applied through normal proposal creation and approval, preserving the D1 change journal. The previous generic `/home` description can be retired through its journaled revert after canonical metadata is in place. Future automatic metadata application remains disabled. The pipeline must verify the canonical homepage, its alias, sitemap, stylesheet and exact social image bytes before declaring the findings fixed.
 
-`llms.txt` remains optional. Its absence is informational, following [Google's guidance](https://developers.google.com/search/docs/fundamentals/ai-optimization-guide); existing open findings refresh their severity and detail on subsequent runs. No `llms.txt` content is fabricated merely to clear a warning.
+`llms.txt` remains optional. Its absence is informational, following [Google's guidance](https://developers.google.com/search/docs/fundamentals/ai-optimization-guide); existing open findings refresh their severity and detail on subsequent runs. No `llms.txt` content is fabricated merely to clear a warning. The separately requested [internal encrypted context](internal-llms.md) is served only through the authenticated control Worker. Public context-file routes remain unavailable, and the private document does not clear the public informational finding.
 
 ## Provenance and current state
 

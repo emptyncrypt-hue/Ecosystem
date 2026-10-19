@@ -7,6 +7,7 @@ import {
   CloudflareClient, buildWranglerConfig, configure, deploy, ensureResources,
   requireCredentials, runWrangler, status, validateConfig, withSecretsFile,
 } from '../scripts/seo-agent.mjs';
+import { sealInternalLlms } from '../scripts/internal-llms.mjs';
 
 const config = {
   siteUrl: 'https://dunesub.de', siteName: 'DuneSub',
@@ -70,7 +71,7 @@ test('SEO deployment configuration targets dunesub and preserves approval policy
   assert.equal(generated.ai.binding, 'AI');
   const text = await readFile(join(rootDir, 'services/seo-agent/wrangler.jsonc'), 'utf8');
   assert.match(text, /LOCAL PLACEHOLDERS ONLY/);
-  assert.doesNotMatch(text, /AGENT_TOKEN|CLOUDFLARE_API_TOKEN/);
+  assert.doesNotMatch(text, /AGENT_TOKEN|CLOUDFLARE_API_TOKEN|INTERNAL_LLMS_KEY|INTERNAL_LLMS_CIPHERTEXT/);
 });
 
 test('configuration rejects secret fields, account emails, URL credentials, and unsafe resource names', () => {
@@ -136,6 +137,23 @@ test('account mismatch and unavailable dependencies fail before remote requests'
   assert.equal(calls, 0);
 });
 
+test('invalid optional internal-document secrets fail before every deployment effect', async t => {
+  const rootDir = await fixture(t);
+  const sealed = await sealInternalLlms({ plaintext: '# Internal platform reference', siteUrl: config.siteUrl });
+  let calls = 0;
+  for (const extra of [
+    { INTERNAL_LLMS_KEY: sealed.key },
+    { INTERNAL_LLMS_CIPHERTEXT: sealed.envelope },
+    { INTERNAL_LLMS_KEY: credentials.AGENT_TOKEN, INTERNAL_LLMS_CIPHERTEXT: sealed.envelope },
+    { INTERNAL_LLMS_KEY: sealed.key, INTERNAL_LLMS_CIPHERTEXT: sealed.envelope.replace('AES-256-GCM', 'AES-256-XTS') },
+    { INTERNAL_LLMS_KEY: sealed.key, INTERNAL_LLMS_CIPHERTEXT: (await sealInternalLlms({ plaintext: '# Other platform', siteUrl: 'https://other.example' })).envelope },
+  ]) {
+    await assert.rejects(deploy({ rootDir, env: { ...credentials, ...extra }, fetchImpl: () => { calls++; }, wrangler: () => { calls++; } }));
+    await assert.rejects(access(join(rootDir, 'services/seo-agent/wrangler.jsonc')), { code: 'ENOENT' });
+  }
+  assert.equal(calls, 0);
+});
+
 test('resource provisioning reuses existing exact-name resources without POST', async () => {
   const { fetchImpl, calls } = mockApi();
   const resources = await ensureResources(new CloudflareClient(config.accountId, credentials.CLOUDFLARE_API_TOKEN, fetchImpl), config);
@@ -191,11 +209,13 @@ test('transport failures and invalid API responses are sanitized without retry',
 });
 
 test('private temporary secret files have restrictive permissions and are cleaned after success or failure', async () => {
+  const sealed = await sealInternalLlms({ plaintext: '# Private reference', siteUrl: config.siteUrl });
+  const secrets = { AGENT_TOKEN: credentials.AGENT_TOKEN, INTERNAL_LLMS_KEY: sealed.key, INTERNAL_LLMS_CIPHERTEXT: sealed.envelope };
   for (const fail of [false, true]) {
     let path;
-    const work = withSecretsFile({ AGENT_TOKEN: credentials.AGENT_TOKEN }, async filename => {
+    const work = withSecretsFile(secrets, async filename => {
       path = filename;
-      assert.deepEqual(JSON.parse(await readFile(filename, 'utf8')), { AGENT_TOKEN: credentials.AGENT_TOKEN });
+      assert.deepEqual(JSON.parse(await readFile(filename, 'utf8')), secrets);
       assert.equal((await stat(filename)).mode & 0o777, 0o600);
       assert.equal((await stat(dirname(filename))).mode & 0o777, 0o700);
       if (fail) throw new Error('simulated publish failure');
@@ -231,6 +251,33 @@ test('deployment orders schema before publish, passes a private secret file, and
   assert.ok(generated.includes(database.uuid));
   assert.ok(generated.includes(namespace.id));
   assert.ok(!generated.includes(credentials.AGENT_TOKEN));
+});
+
+test('internal-document secrets publish atomically without CLI or generated vars, and absent pairs keep the retaining secrets-file deployment path', async t => {
+  const rootDir = await fixture(t);
+  const sealed = await sealInternalLlms({ plaintext: '# Private reference', siteUrl: config.siteUrl });
+  const optional = { INTERNAL_LLMS_KEY: sealed.key, INTERNAL_LLMS_CIPHERTEXT: sealed.envelope };
+  // Ordinary redeploys omit optional values rather than sending empty values.
+  // The pinned Wrangler --secrets-file path retains unlisted remote secrets.
+  for (const extra of [optional, {}, { INTERNAL_LLMS_KEY: '', INTERNAL_LLMS_CIPHERTEXT: '' }]) {
+    const { fetchImpl } = mockApi();
+    const publications = [];
+    let secretFile;
+    await deploy({ rootDir, env: { ...credentials, ...extra }, fetchImpl, wrangler: async args => {
+      for (const secret of [sealed.key, sealed.envelope]) assert.ok(!args.includes(secret));
+      if (!args.includes('--secrets-file')) return;
+      secretFile = args.at(-1);
+      publications.push(args);
+      const published = JSON.parse(await readFile(secretFile, 'utf8'));
+      assert.deepEqual(published, { AGENT_TOKEN: credentials.AGENT_TOKEN, ...(extra === optional ? optional : {}) });
+    } });
+    assert.deepEqual(publications, [['deploy', '--secrets-file', secretFile]]);
+    await assert.rejects(access(secretFile), { code: 'ENOENT' });
+    const generated = await readFile(join(rootDir, 'services/seo-agent/wrangler.jsonc'), 'utf8');
+    assert.doesNotMatch(generated, /INTERNAL_LLMS_KEY|INTERNAL_LLMS_CIPHERTEXT/);
+    assert.ok(!generated.includes(sealed.key));
+    assert.ok(!generated.includes(sealed.envelope));
+  }
 });
 
 test('schema failure prevents publishing; publish failure removes the secret file without retry', async t => {
@@ -272,19 +319,21 @@ test('read-only status checks both Cloudflare and authenticated /status without 
   await assert.rejects(status({ rootDir, env: credentials, fetchImpl: bad.fetchImpl }), /could not be verified/);
 });
 
-test('Wrangler children inherit proxy and CA settings, omit AGENT_TOKEN, and suppress credential output', {
+test('Wrangler children inherit proxy and CA settings, omit runtime secrets, and suppress credential output', {
   skip: Number(process.versions.node.split('.')[0]) < 24 ? 'Worker deployment and proxy-aware child execution require Node 24+.' : false,
 }, async t => {
   const rootDir = await fixture(t);
   const probe = join(rootDir, 'probe.json');
   const binary = join(rootDir, 'services/seo-agent/node_modules/wrangler/bin/wrangler.js');
-  await writeFile(binary, `const fs = require('node:fs');\nfs.writeFileSync(process.env.SEO_TEST_PROBE, JSON.stringify({proxy: process.env.HTTPS_PROXY, ca: process.env.SSL_CERT_FILE, agent: process.env.AGENT_TOKEN, cf: !!process.env.CLOUDFLARE_API_TOKEN, log: process.env.WRANGLER_LOG_PATH, config: process.env.XDG_CONFIG_HOME, cache: process.env.XDG_CACHE_HOME, configMode: fs.statSync(process.env.XDG_CONFIG_HOME + '/.wrangler').mode & 511, cacheMode: fs.statSync(process.env.XDG_CACHE_HOME + '/.wrangler').mode & 511, args: process.argv.slice(2)}));\nconsole.error(process.env.CLOUDFLARE_API_TOKEN);\nprocess.exit(process.env.SEO_TEST_FAIL ? 1 : 0);\n`);
-  const env = { ...process.env, ...credentials, SEO_TEST_PROBE: probe, HTTPS_PROXY: 'http://127.0.0.1:9', SSL_CERT_FILE: '/test/session-ca.pem' };
+  await writeFile(binary, `const fs = require('node:fs');\nfs.writeFileSync(process.env.SEO_TEST_PROBE, JSON.stringify({proxy: process.env.HTTPS_PROXY, ca: process.env.SSL_CERT_FILE, agent: process.env.AGENT_TOKEN, internalKey: process.env.INTERNAL_LLMS_KEY, internalCiphertext: process.env.INTERNAL_LLMS_CIPHERTEXT, cf: !!process.env.CLOUDFLARE_API_TOKEN, log: process.env.WRANGLER_LOG_PATH, config: process.env.XDG_CONFIG_HOME, cache: process.env.XDG_CACHE_HOME, configMode: fs.statSync(process.env.XDG_CONFIG_HOME + '/.wrangler').mode & 511, cacheMode: fs.statSync(process.env.XDG_CACHE_HOME + '/.wrangler').mode & 511, args: process.argv.slice(2)}));\nconsole.error(process.env.CLOUDFLARE_API_TOKEN);\nprocess.exit(process.env.SEO_TEST_FAIL ? 1 : 0);\n`);
+  const env = { ...process.env, ...credentials, INTERNAL_LLMS_KEY: 'test-internal-key', INTERNAL_LLMS_CIPHERTEXT: 'test-internal-envelope', SEO_TEST_PROBE: probe, HTTPS_PROXY: 'http://127.0.0.1:9', SSL_CERT_FILE: '/test/session-ca.pem' };
   await runWrangler(['deploy', '--dry-run'], { rootDir, env, accountId: config.accountId });
   const recorded = JSON.parse(await readFile(probe, 'utf8'));
   assert.equal(recorded.proxy, env.HTTPS_PROXY);
   assert.equal(recorded.ca, env.SSL_CERT_FILE);
   assert.equal(recorded.agent, undefined);
+  assert.equal(recorded.internalKey, undefined);
+  assert.equal(recorded.internalCiphertext, undefined);
   assert.equal(recorded.cf, true);
   assert.equal(recorded.configMode, 0o700);
   assert.equal(recorded.cacheMode, 0o700);

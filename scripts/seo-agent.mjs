@@ -4,6 +4,7 @@ import { access, chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { validateInternalLlmsSecrets } from './internal-llms.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const API = 'https://api.cloudflare.com/client/v4';
@@ -266,6 +267,8 @@ export async function runWrangler(args, { rootDir = ROOT, env = process.env, acc
       WRANGLER_LOG_PATH: join(directory, 'wrangler.log'), XDG_CONFIG_HOME: configHome,
       XDG_CACHE_HOME: cacheHome, CI: 'true' };
     delete childEnv.AGENT_TOKEN;
+    delete childEnv.INTERNAL_LLMS_KEY;
+    delete childEnv.INTERNAL_LLMS_CIPHERTEXT;
     const binary = join(rootDir, 'services/seo-agent/node_modules/wrangler/bin/wrangler.js');
     await new Promise((done, fail) => {
       const stage = args[0] === 'd1' ? 'remote D1 initialization' : args.includes('--dry-run') ? 'local Worker bundle check' : 'Worker publication';
@@ -313,6 +316,7 @@ export async function deploy({ rootDir = ROOT, env = process.env, fetchImpl = gl
   // This check deliberately precedes every filesystem mutation and API call.
   const { cloudflareToken, agentToken } = requireCredentials(env);
   const config = await readConfig(rootDir);
+  const internalLlmsSecrets = await validateInternalLlmsSecrets({ env, siteUrl: config.siteUrl });
   try {
     await access(join(rootDir, 'services/seo-agent/node_modules/wrangler/bin/wrangler.js'));
     await access(join(rootDir, 'services/seo-agent/schema.sql'));
@@ -333,8 +337,11 @@ export async function deploy({ rootDir = ROOT, env = process.env, fetchImpl = gl
   await configure({ rootDir, resources });
   progress('Initializing the remote D1 schema.');
   await wrangler(['d1', 'execute', 'DB', '--remote', '--file', 'schema.sql'], childContext);
-  progress('Publishing the Worker and its AGENT_TOKEN together.');
-  await withSecretsFile({ AGENT_TOKEN: agentToken }, filename => wrangler(['deploy', '--secrets-file', filename], childContext));
+  progress('Publishing the Worker and its configured secrets together.');
+  // Wrangler's --secrets-file upload retains remote secret_text/secret_key
+  // bindings not listed here. An absent optional pair preserves its current
+  // remote value; supplied values are validated and published atomically.
+  await withSecretsFile({ AGENT_TOKEN: agentToken, ...internalLlmsSecrets }, filename => wrangler(['deploy', '--secrets-file', filename], childContext));
   progress('Verifying authenticated Worker status.');
   await verifyWorker(url, agentToken, fetchImpl, 3);
   return { url, dashboardUrl: `${url}/dashboard`, siteUrl: config.siteUrl };
@@ -361,6 +368,9 @@ status     Read Cloudflare Worker settings and verify authenticated GET /status.
 
 Deploy/status require Node 24+, CLOUDFLARE_API_TOKEN and a distinct AGENT_TOKEN
 from an external secret manager. Never pass tokens as CLI arguments or config.
+Optional INTERNAL_LLMS_KEY and INTERNAL_LLMS_CIPHERTEXT must be supplied together;
+they are validated locally, stored as Worker secrets, and never used as vars.
+Omitting both preserves any existing remote internal-document secrets.
 The fixed account, site, and resource names live in config/seo-agent.json.
 Cloudflare API: account-scoped GET/POST /d1/database, /storage/kv/namespaces,
 /queues; GET /workers/subdomain and /workers/scripts/<name>/settings.
@@ -388,7 +398,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     // All expected errors are ours and exclude raw upstream/child responses.
     // Redact again at the final boundary in case a future error contains a value.
     let message = error instanceof Error ? error.message : 'SEO command failed.';
-    for (const value of [process.env.CLOUDFLARE_API_TOKEN, process.env.AGENT_TOKEN]) {
+    for (const value of [process.env.CLOUDFLARE_API_TOKEN, process.env.AGENT_TOKEN, process.env.INTERNAL_LLMS_KEY, process.env.INTERNAL_LLMS_CIPHERTEXT]) {
       if (value) message = message.split(value).join('[REDACTED]');
     }
     process.stderr.write(`SEO: ${message}\n`);

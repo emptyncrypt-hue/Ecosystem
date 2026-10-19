@@ -63,7 +63,7 @@
     "src/dashboard.ts": "96cab918a9bef075945b75b1a9a6890bcac563accf01459ae10ffe58d0ce6299",
     "src/gsc.ts": "0547a04be3f54c88037719c1668dfd55e5b891d61f6128f069642ca0d0b1db8c",
     "src/impact.ts": "7f06003973ef3b032ee34a1158bf596f4dede982398e180ee80ff84cdc0f7235",
-    "src/index.ts": "5f3bb3faceef3411da499bf5c4159feb6bebfa24ed01710acd1f218a40574089",
+    "src/index.ts": "d4327ed936796b5bf357c4ca4eb6610e87f57f3e2563352fa12cb15fde511e13",
     "src/mcp.ts": "c4d8265e79ee5e4b0541d5e03d46866f78dd7343b0bf9aa401ba4138ae7e8908",
     "src/overrides.ts": "1b0508e696f1eae578833bfdbab62ea5f0331c97cae59b79f10558412911bdd0",
     "src/pagepath.ts": "c7fd3b22d2e8d97ee1894cd587a9f2f8b000c8d6a68e350b536b70029f8e6020",
@@ -80,7 +80,9 @@
     "test/rules.test.ts": "61801c6a336b55369b73c9733ba81217047b7e75fc3a65eaec8e3c06436051d6",
     "tsconfig.json": "dab2f96028fc3661fc8ad1095a77185342fe2f8683a4c2c8345f961359f260dc",
     "wrangler.example.jsonc": "c71aa181d8038231e68e47fc5d5091547cee5aee66dc167e724f91086cb51362",
-    "env.d.ts": "eb82274dd7ef4f3f06c2e1ed023e9310698e0ce2aae84e7499075f3b4c574ec9"
+    "env.d.ts": "d58ea4f8a8035db0db67bdba9391633666d4cd2c53b1e29d92fa741cc75a4769",
+    "src/internal-llms.ts": "b0035552386fec5f30834c26f20da266be38cdaf403734c56cfa29c247891dc5",
+    "test/internal-llms.test.ts": "f44e51ec4a3259ce9de2c2bb5aaee9b2a13efe099700b74426357435c66aef4d"
   },
   "patchedPaths": [
     ".gitignore",
@@ -96,7 +98,8 @@
     "src/rules.ts",
     "test/aeo.test.ts",
     "test/findings.test.ts",
-    "test/propose.test.ts"
+    "test/propose.test.ts",
+    "src/index.ts"
   ],
   "modifications": {
     ".gitignore": "Scope ignores to generated configuration, generated runtime types, dependency and build artifacts, and local secret values.",
@@ -112,10 +115,13 @@
     "src/rules.ts": "Refresh existing open finding severity and detail while preserving finding identity and dismissal history.",
     "test/aeo.test.ts": "Verify optional llms.txt is reported as informational.",
     "test/findings.test.ts": "Cover open finding severity and detail refresh without identity changes or reopening dismissals.",
-    "test/propose.test.ts": "Cover canonical paths for new proposals and dry runs while preserving historical proposal paths and revert behavior."
+    "test/propose.test.ts": "Cover canonical paths for new proposals and dry runs while preserving historical proposal paths and revert behavior.",
+    "src/index.ts": "Gate the exact internal llms.txt control route with the existing bearer authentication, private failure headers, and a separately encrypted read-only document handler."
   },
   "addedFiles": {
-    "env.d.ts": "Permanent secret binding types and optional trusted sitemap origin and exact homepage path alias configuration; contains names and types, never credential values."
+    "env.d.ts": "Permanent secret binding types, optional trusted sitemap/homepage aliases, and private internal-context encryption secret names; contains names and types, never credential values.",
+    "src/internal-llms.ts": "Authenticated HTTPS-only internal document delivery using bounded AES-256-GCM ciphertext, independent Worker secret key, context binding, sanitized failures, and private/no-store headers; never accesses public overrides or AI.",
+    "test/internal-llms.test.ts": "Synthetic cryptographic and access-control coverage for internal document authentication, context binding, tampering, malformed configuration, bounds, private headers, HTTPS and HEAD/method behavior."
   },
   "notes": [
     "originalFiles hashes describe the exact upstream commit, not modified vendored files.",

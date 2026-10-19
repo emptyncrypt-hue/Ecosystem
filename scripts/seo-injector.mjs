@@ -229,6 +229,8 @@ export async function build({ rootDir = ROOT, env = process.env, wrangler = runW
   await configure({ rootDir });
   const childEnv = { ...env };
   delete childEnv.AGENT_TOKEN;
+  delete childEnv.INTERNAL_LLMS_KEY;
+  delete childEnv.INTERNAL_LLMS_CIPHERTEXT;
   delete childEnv.CLOUDFLARE_API_TOKEN;
   const configPath = resolve(rootDir, 'services/seo-injector/wrangler.jsonc');
   const outDir = resolve(rootDir, 'services/seo-injector/dist');
@@ -291,6 +293,8 @@ export async function deploy({ rootDir = ROOT, env = process.env, fetchImpl = gl
   const configPath = resolve(rootDir, 'services/seo-injector/wrangler.jsonc');
   const childEnv = { ...env };
   delete childEnv.AGENT_TOKEN;
+  delete childEnv.INTERNAL_LLMS_KEY;
+  delete childEnv.INTERNAL_LLMS_CIPHERTEXT;
   const context = { rootDir, env: childEnv, accountId: config.accountId };
   progress('Checking the injector bundle locally.');
   await wrangler(['deploy', '--dry-run', '--config', configPath], context);
@@ -342,7 +346,7 @@ export async function main(args = process.argv.slice(2)) {
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   main().catch(error => {
     let message = typeof error?.message === 'string' ? error.message : 'Operation failed.';
-    for (const token of [process.env.CLOUDFLARE_API_TOKEN, process.env.AGENT_TOKEN]) {
+    for (const token of [process.env.CLOUDFLARE_API_TOKEN, process.env.AGENT_TOKEN, process.env.INTERNAL_LLMS_KEY, process.env.INTERNAL_LLMS_CIPHERTEXT]) {
       if (token) message = message.replaceAll(token, '[redacted]');
     }
     process.stderr.write(`SEO injector: ${message}\n`);

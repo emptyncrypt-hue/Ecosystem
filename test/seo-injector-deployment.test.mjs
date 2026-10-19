@@ -120,12 +120,14 @@ test('canonical www configuration retains both apex and www route patterns', asy
 test('build checks the local injector using shared private Wrangler execution without credentials', async t => {
   const rootDir = await fixture(t);
   const invocations = [];
-  const result = await build({ rootDir, env: { ...env, AGENT_TOKEN: 'unused-control-secret', HTTPS_PROXY: 'http://127.0.0.1:9' }, wrangler: async (args, context) => {
+  const result = await build({ rootDir, env: { ...env, AGENT_TOKEN: 'unused-control-secret', INTERNAL_LLMS_KEY: 'private-key-fixture', INTERNAL_LLMS_CIPHERTEXT: 'private-envelope-fixture', HTTPS_PROXY: 'http://127.0.0.1:9' }, wrangler: async (args, context) => {
     invocations.push(args);
     assert.equal(context.rootDir, rootDir);
     assert.equal(context.accountId, config.accountId);
     assert.equal(context.env.CLOUDFLARE_API_TOKEN, undefined);
     assert.equal(context.env.AGENT_TOKEN, undefined);
+    assert.equal(context.env.INTERNAL_LLMS_KEY, undefined);
+    assert.equal(context.env.INTERNAL_LLMS_CIPHERTEXT, undefined);
     assert.equal(context.env.HTTPS_PROXY, 'http://127.0.0.1:9');
     assert.match(await readFile(generatedPath(rootDir), 'utf8'), /LOCAL PLACEHOLDERS ONLY/);
   } });
@@ -272,12 +274,14 @@ test('successful deploy shares control KV and supplies the absolute injector con
   const rootDir = await fixture(t);
   const api = mockApi({ routes: [{ pattern: 'unrelated.example/*', script: 'other-worker' }] });
   const invocations = [];
-  const result = await deploy({ rootDir, env: { ...env, AGENT_TOKEN: 'must-not-be-used' }, fetchImpl: api.fetchImpl,
+  const result = await deploy({ rootDir, env: { ...env, AGENT_TOKEN: 'must-not-be-used', INTERNAL_LLMS_KEY: 'private-key-fixture', INTERNAL_LLMS_CIPHERTEXT: 'private-envelope-fixture' }, fetchImpl: api.fetchImpl,
     wrangler: async (args, context) => {
       invocations.push(args);
       assert.equal(context.rootDir, rootDir);
       assert.equal(context.accountId, config.accountId);
       assert.equal(context.env.AGENT_TOKEN, undefined);
+    assert.equal(context.env.INTERNAL_LLMS_KEY, undefined);
+    assert.equal(context.env.INTERNAL_LLMS_CIPHERTEXT, undefined);
       assert.equal(context.env.CLOUDFLARE_API_TOKEN, env.CLOUDFLARE_API_TOKEN);
       const generated = JSON.parse((await readFile(generatedPath(rootDir), 'utf8')).replace(/^\/\/.*\n/, ''));
       assert.deepEqual(generated.kv_namespaces, [{ binding: 'SEO_OVERRIDES', id: namespaceId }]);
