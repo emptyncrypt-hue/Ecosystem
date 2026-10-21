@@ -53,6 +53,7 @@ The Squarespace connection uses `services/seo-injector`, a route Worker that pre
 - [CMEK organization policy setup](config/README.md)
 - [Active verification workflow](.github/workflows/verify.yml)
 - [SEO service setup, local verification, and deployment](docs/seo-agent.md)
+- [Cross-platform dashboard passkeys and recovery](docs/cross-platform-authentication.md)
 - [YubiKey PIV hardware key protection and Mac enrollment](docs/yubikey-piv.md)
 - [Node ACL contract](contracts/node_acl_smart_contract.sol)
 

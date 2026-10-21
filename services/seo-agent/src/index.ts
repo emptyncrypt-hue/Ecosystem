@@ -8,7 +8,8 @@
  *   REST (this file):    /status /run /findings /proposals[...] /changes[...] /overrides
  *   MCP  (src/mcp.ts):   /mcp — stateless Streamable HTTP for Claude clients
  *
- * Auth for both: `Authorization: Bearer <AGENT_TOKEN>` (wrangler secret).
+ * REST also supports scoped dashboard sessions. MCP and the private internal
+ * document require `Authorization: Bearer <AGENT_TOKEN>` (wrangler secret).
  */
 
 import {
@@ -35,18 +36,36 @@ import { analyticsSummary, analyticsPage, analyticsImpact } from './analytics.js
 import { handleMcp } from './mcp.js';
 import { DASHBOARD_HTML } from './dashboard.js';
 import { INTERNAL_LLMS_PATH, handleInternalLlms, internalLlmsResponse } from './internal-llms.js';
+import { bearerAuthorized, dashboardSessionAuthorized, handleAuth } from './auth.js';
 
-const json = (data: unknown, status = 200): Response => Response.json(data, { status });
+/** Control responses must never enter a browser/shared cache or expose CORS. */
+function privateResponse(response: Response): Response {
+  const headers = new Headers(response.headers);
+  for (const name of [...headers.keys()]) {
+    if (name.startsWith('access-control-')) headers.delete(name);
+  }
+  headers.set('Cache-Control', 'private, no-store');
+  headers.set('Pragma', 'no-cache');
+  headers.set('Vary', 'Authorization, Cookie');
+  headers.set('X-Content-Type-Options', 'nosniff');
+  headers.set('X-Robots-Tag', 'noindex, nofollow, noarchive');
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
 
-async function authorized(request: Request, env: Env): Promise<boolean> {
-  const token = (request.headers.get('authorization') || '').replace(/^Bearer\s+/i, '');
-  if (!token || !env.AGENT_TOKEN) return false;
-  const enc = new TextEncoder();
-  const [a, b] = await Promise.all([
-    crypto.subtle.digest('SHA-256', enc.encode(token)),
-    crypto.subtle.digest('SHA-256', enc.encode(env.AGENT_TOKEN)),
-  ]);
-  return crypto.subtle.timingSafeEqual(a, b);
+const json = (data: unknown, status = 200): Response => privateResponse(Response.json(data, { status }));
+
+// A session grants access only to the existing dashboard API. New private
+// endpoints remain bearer-only until they are deliberately added here.
+function dashboardRoute(method: string, pathname: string): boolean {
+  if (method === 'GET') return new Set([
+    '/status', '/findings', '/proposals', '/changes', '/overrides',
+    '/aeo/hits', '/aeo/citations', '/analytics/summary', '/analytics/page', '/analytics/impact',
+  ]).has(pathname);
+  if (method !== 'POST') return false;
+  return new Set(['/run', '/proposals', '/proposals/dry-run', '/aeo/citations/run']).has(pathname)
+    || /^\/findings\/\d+\/(?:dismiss|restore|draft)$/.test(pathname)
+    || /^\/proposals\/\d+\/(?:approve|reject)$/.test(pathname)
+    || /^\/changes\/\d+\/revert$/.test(pathname);
 }
 
 /** Parse a JSON request body, mapping malformed JSON to a 400 (not a 500). */
@@ -64,19 +83,28 @@ export default {
     const { pathname } = url;
     const method = request.method;
 
-    // The review dashboard is served UNAUTHENTICATED (no secrets in the HTML —
-    // it holds a login form; the token it collects gates every API call it makes).
+    // The dashboard shell contains no credentials. Every API request performs
+    // its own bearer or scoped session authorization.
     if (method === 'GET' && (pathname === '/' || pathname === '/dashboard')) {
-      return new Response(DASHBOARD_HTML, {
+      return privateResponse(new Response(DASHBOARD_HTML, {
         headers: {
           'content-type': 'text/html; charset=utf-8',
-          'content-security-policy': "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'",
+          'content-security-policy': "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+          'x-frame-options': 'DENY',
+          'referrer-policy': 'same-origin',
         },
-      });
+      }));
     }
 
-    // Everything else (REST + MCP) requires the bearer token.
-    if (!(await authorized(request, env))) {
+    if (pathname === '/auth' || pathname.startsWith('/auth/')) return handleAuth(request, env);
+
+    // Explicit credentials take precedence: an invalid Authorization header
+    // must not silently fall back to an ambient browser session. Neither MCP
+    // nor the internal document is included in the dashboard session scope.
+    const bearer = await bearerAuthorized(request, env);
+    const session = !bearer && !request.headers.has('authorization') && dashboardRoute(method, pathname)
+      && await dashboardSessionAuthorized(request, env);
+    if (!bearer && !session) {
       return pathname === INTERNAL_LLMS_PATH
         ? internalLlmsResponse(request, 401, 'Unauthorized\n')
         : json({ error: 'unauthorized' }, 401);
@@ -84,7 +112,7 @@ export default {
 
     if (pathname === INTERNAL_LLMS_PATH) return handleInternalLlms(request, env);
 
-    if (pathname === '/mcp') return handleMcp(request, env, ctx);
+    if (pathname === '/mcp') return privateResponse(await handleMcp(request, env, ctx));
 
     try {
       if (method === 'GET' && pathname === '/status') return json(await statusData(env));

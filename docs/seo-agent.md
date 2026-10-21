@@ -4,6 +4,8 @@ Ecosystem includes the Cloudflare Worker in [`services/seo-agent`](../services/s
 
 The service is configured for the canonical origin `https://www.dunesub.de` in [`config/seo-agent.json`](../config/seo-agent.json), using Cloudflare account `c01bd8dd02ec6b1dd3a05ea21649d1b8`. The apex domain redirects to this origin. The control Worker is named `dunesub-seo-agent`. Its API and dashboard use a `workers.dev` URL assigned by Cloudflare; that URL is separate from the public site being audited.
 
+The dashboard supports [passkey authentication on iOS, Android, Windows and macOS](cross-platform-authentication.md), with bearer-token recovery and existing REST/MCP automation.
+
 ## Verify locally
 
 Use Node.js 24 for the SEO service. The existing dependency-free Ecosystem tools continue to support their documented Node.js version. From the repository root:
@@ -16,7 +18,7 @@ npm run seo:verify
 
 The SEO verification checks the recorded source hashes, generates local configuration and Worker types, checks TypeScript, runs the upstream tests, builds the Worker, and runs it in a local Cloudflare runtime. The runtime smoke test exercises authenticated HTTP requests, proposal approval and rejection, D1 journal writes, KV overrides, and rollback. It makes no website or AI requests and needs no Cloudflare token.
 
-`npm run seo:configure` generates the gitignored `services/seo-agent/wrangler.jsonc` from the repository's non-secret site configuration. Resource placeholders support local verification. Cloud deployment provisions real resources before using that configuration. `npm run seo:dev` opens the local dashboard through Wrangler; a crawl or AI draft additionally needs the services it invokes.
+`npm run seo:configure` generates the gitignored `services/seo-agent/wrangler.jsonc` from the repository's non-secret site configuration. Resource placeholders support local verification. Cloud deployment provisions real resources before using that configuration. `npm run seo:dev` opens a local dashboard preview through Wrangler. For an interactive token-only localhost preview, use a separate test configuration with `authOrigin` omitted and a synthetic agent token; the production authentication origin deliberately does not authorize localhost. The native verification suite exercises configured HTTPS passkey ceremonies without a browser or production credentials. A crawl or AI draft additionally needs the services it invokes.
 
 ## Deploy from GitHub Actions
 

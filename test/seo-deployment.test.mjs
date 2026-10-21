@@ -94,6 +94,22 @@ test('configuration rejects secret fields, account emails, URL credentials, and 
   assert.throws(() => buildWranglerConfig(config, { databaseId: '00000000-0000-0000-0000-000000000000', namespaceId: namespace.id }), /invalid resource/);
 });
 
+test('dashboard authentication uses an explicit canonical DNS origin distinct from the public site', () => {
+  const authOrigin = 'https://dunesub-seo-agent.dunesub-test.workers.dev';
+  assert.equal(validateConfig({ ...config, authOrigin }).authOrigin, authOrigin);
+  assert.equal(buildWranglerConfig({ ...config, authOrigin }).vars.AUTH_ORIGIN, authOrigin);
+  assert.equal(buildWranglerConfig(config).vars.AUTH_ORIGIN, undefined);
+  for (const invalid of [
+    '', null, 123, 'http://agent.example.com', config.siteUrl,
+    'https://agent.example.com/', 'https://Agent.example.com', 'https://agent.example.com:443',
+    'https://agent.example.com:8443', 'https://user:password@agent.example.com',
+    'https://agent.example.com/dashboard', 'https://agent.example.com?x=1', 'https://agent.example.com#x',
+    'https://*.example.com', 'https://agent.example.com.', 'https://localhost',
+    'https://agent.localhost', 'https://agent.local', 'https://agent.internal',
+    'https://127.0.0.1', 'https://2130706433', 'https://[::1]',
+  ]) assert.throws(() => validateConfig({ ...config, authOrigin: invalid }), /authOrigin/);
+});
+
 test('sitemap aliases are explicit HTTPS origins and are passed only to the crawler', () => {
   const alias = 'https://sepia-carnation-yj5e.squarespace.com';
   const normalized = validateConfig({ ...config, sitemapOriginAliases: [alias + '/', alias, config.siteUrl] });
@@ -175,6 +191,32 @@ test('a self-referencing bridge fails after read-only hostname discovery and bef
   assert.equal(api.calls[0].options.method, 'GET');
   assert.ok(api.calls[0].url.endsWith('/workers/subdomain'));
   await assert.rejects(access(join(rootDir, 'services/seo-agent/wrangler.jsonc')), { code: 'ENOENT' });
+});
+
+test('an authentication origin mismatch fails after read-only discovery and before generated files or remote writes', async t => {
+  for (const authOrigin of ['https://other-account.workers.dev', 'https://dashboard.example.com']) {
+    const rootDir = await fixture(t, { ...config, authOrigin });
+    const target = join(rootDir, 'services/seo-agent/wrangler.jsonc');
+    const original = '// existing configuration must survive a failed origin check\n';
+    await writeFile(target, original);
+    const api = mockApi({ absent: true });
+    await assert.rejects(deploy({ rootDir, env: credentials, fetchImpl: api.fetchImpl,
+      wrangler: () => assert.fail('Wrangler must not run') }), /authOrigin does not match/);
+    assert.equal(api.calls.length, 1);
+    assert.equal(api.calls[0].options.method, 'GET');
+    assert.ok(api.calls[0].url.endsWith('/workers/subdomain'));
+    assert.equal(await readFile(target, 'utf8'), original);
+  }
+});
+
+test('a verified authentication origin is published only as a non-secret control Worker variable', async t => {
+  const authOrigin = 'https://dunesub-seo-agent.dunesub-test.workers.dev';
+  const rootDir = await fixture(t, { ...config, authOrigin });
+  const api = mockApi();
+  const result = await deploy({ rootDir, env: credentials, fetchImpl: api.fetchImpl, wrangler: async () => {} });
+  assert.equal(result.url, authOrigin);
+  const generated = await readFile(join(rootDir, 'services/seo-agent/wrangler.jsonc'), 'utf8');
+  assert.equal(JSON.parse(generated.slice(generated.indexOf('{'))).vars.AUTH_ORIGIN, authOrigin);
 });
 
 test('resource provisioning reuses existing exact-name resources without POST', async () => {

@@ -509,9 +509,12 @@ count `open` only.
 ## Review dashboard
 
 A self-contained human UI is served by the Worker itself at **`GET /`** (and
-`/dashboard`) — zero dependencies, zero build step, theme-aware, mobile-friendly.
-The page is public (it holds no secrets); you paste the `AGENT_TOKEN` once and it
-is kept in `localStorage` and sent as the bearer on every API call.
+`/dashboard`) — self-contained browser code, theme-aware and mobile-friendly.
+With `AUTH_ORIGIN` configured, the dashboard supports passkeys on iOS, Android,
+Windows and macOS, plus token recovery, through secure HttpOnly sessions. Without
+that setting, token login stays in page memory only. Tokens are never persisted
+in browser storage. See the [Ecosystem authentication guide](../../docs/cross-platform-authentication.md)
+for enrollment, recovery, deployment and session boundaries.
 
 It's organized as five tabs, each deep-linkable by URL hash — back/forward and
 bookmarks work, and an unknown/missing hash resolves to Overview (through a fixed
@@ -566,7 +569,10 @@ via the 18 tools: `seo_status`, `run_pipeline`, `list_findings`, `dismiss_findin
 
 ## Control API
 
-All endpoints require `Authorization: Bearer <AGENT_TOKEN>` (the MCP endpoint too).
+Bearer authorization remains available for every control API below. The explicitly
+scoped dashboard REST routes also accept an authenticated browser session with
+Origin/CSRF checks on mutations. MCP and `/internal/llms.txt` require the bearer
+token; the `/auth/*` ceremony endpoints follow the authentication guide.
 
 | Endpoint | What it does |
 | --- | --- |
@@ -600,7 +606,8 @@ default or is optional. See `wrangler.example.jsonc` for the annotated template.
 | Var / secret | Required | Meaning |
 | --- | --- | --- |
 | `SITE_URL` (var) | ✓ | Origin to crawl and manage |
-| `AGENT_TOKEN` (secret) | ✓ | Bearer token gating the API, MCP endpoint, and dashboard |
+| `AGENT_TOKEN` (secret) | ✓ | Bearer API/MCP token and dashboard recovery/enrollment credential |
+| `AUTH_ORIGIN` (var) | | Exact HTTPS control origin enabling passkeys and browser sessions |
 | `SITE_NAME` (var) | | Brand/site name for the AI prompt (defaults to the hostname) |
 | `SITE_DESCRIPTION` (var) | | One clause describing the site, woven into the drafting prompt |
 | `AI_MODEL` (var) | | Workers AI text model for proposals |

@@ -15,7 +15,7 @@ const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const HEX_ID = /^[a-f0-9]{32}$/i;
 
 export function validateConfig(input) {
-  const keys = ['siteUrl', 'siteName', 'siteDescription', 'accountId', 'workerName', 'databaseName', 'queueName', 'namespaceTitle', 'sitemapOriginAliases', 'homepagePathAliases'];
+  const keys = ['siteUrl', 'authOrigin', 'siteName', 'siteDescription', 'accountId', 'workerName', 'databaseName', 'queueName', 'namespaceTitle', 'sitemapOriginAliases', 'homepagePathAliases'];
   if (!input || typeof input !== 'object' || Array.isArray(input)
       || Object.keys(input).some(key => !keys.includes(key))) {
     throw new Error('SEO configuration accepts only documented non-secret fields.');
@@ -28,6 +28,17 @@ export function validateConfig(input) {
   try { site = new URL(input.siteUrl); } catch { throw new Error('A valid HTTPS site URL is required.'); }
   if (site.protocol !== 'https:' || site.username || site.password || site.search || site.hash || site.pathname !== '/') {
     throw new Error('SITE_URL must be an HTTPS origin without credentials, a path, query, or fragment.');
+  }
+  if (input.authOrigin !== undefined) {
+    let auth;
+    try { auth = typeof input.authOrigin === 'string' ? new URL(input.authOrigin) : null; } catch { /* Validated below. */ }
+    if (!auth || auth.protocol !== 'https:' || auth.port || auth.username || auth.password
+        || input.authOrigin !== auth.origin || auth.origin === site.origin
+        || auth.hostname.length > 253 || !auth.hostname.includes('.')
+        || !auth.hostname.split('.').every(label => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label))
+        || /^(?:\d+\.){3}\d+$/.test(auth.hostname) || /\.(?:localhost|local|internal)$/.test(auth.hostname)) {
+      throw new Error('authOrigin must be a canonical HTTPS DNS origin, distinct from SITE_URL, without a port, credentials, path, query, or fragment.');
+    }
   }
   if (typeof input.siteName !== 'string' || !input.siteName.trim() || input.siteName.length > 100) {
     throw new Error('A siteName of 1–100 characters is required.');
@@ -98,6 +109,7 @@ export function buildWranglerConfig(config, resources) {
     },
     vars: {
       SITE_URL: config.siteUrl,
+      ...(config.authOrigin !== undefined ? { AUTH_ORIGIN: config.authOrigin } : {}),
       ...(config.sitemapOriginAliases?.length ? { SITEMAP_ORIGIN_ALIASES: config.sitemapOriginAliases.join(',') } : {}),
       ...(config.homepagePathAliases?.length ? { HOMEPAGE_PATH_ALIASES: config.homepagePathAliases.join(',') } : {}),
       SITE_NAME: config.siteName,
@@ -327,6 +339,12 @@ export async function deploy({ rootDir = ROOT, env = process.env, fetchImpl = gl
   // Confirm the target before creating resources; never register a new account
   // subdomain, start an interactive login, or switch to an ephemeral account.
   const url = await accountWorkerUrl(client, config);
+  // This deployment workflow publishes only the discovered workers.dev host.
+  // Bind passkeys to that verified origin before any generated file or remote
+  // mutation; a custom domain requires a separate explicit deployment flow.
+  if (config.authOrigin !== undefined && config.authOrigin !== url) {
+    throw new Error('authOrigin does not match the verified workers.dev control Worker URL; this deployment workflow does not configure custom authentication domains.');
+  }
   if (internalLlmsSecrets.INTERNAL_LLMS_PROVIDER === 'yubikey-piv'
       && new URL(internalLlmsSecrets.INTERNAL_LLMS_BRIDGE_URL).origin === new URL(url).origin) {
     throw new Error('The internal document bridge must use a dedicated origin distinct from the control Worker.');

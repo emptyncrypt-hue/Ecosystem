@@ -1,6 +1,8 @@
 /** Secret bindings are provisioned remotely; type checks never need secret values. */
 interface Env {
   AGENT_TOKEN: string;
+  /** Exact canonical HTTPS control-plane origin. Omit to disable passkeys. */
+  AUTH_ORIGIN?: string;
   /** Independent random AES-256 key, canonical base64url; Worker secret only. */
   INTERNAL_LLMS_KEY?: string;
   /** Versioned AES-256-GCM envelope; Worker secret only, not a public resource. */
