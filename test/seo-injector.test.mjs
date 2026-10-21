@@ -112,6 +112,70 @@ test('injector rejects previews, arbitrary hosts, ports, and forged origin heade
   assert.equal((await worker.fetch(new Request('https://preview.workers.dev/'), {})).status, 404);
 });
 
+test('public private-LLM routes deny every method and credential without origin, KV, body, or CORS access', async () => {
+  for (const host of ['dunesub.de', 'www.dunesub.de']) {
+    for (const path of ['/llms.txt', '/llms-full.txt', '/internal/llms.txt']) {
+      for (const method of ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS', 'PROPFIND']) {
+        for (const authenticated of [false, true]) {
+          const request = new Request(`https://${host}${path}?token=query-secret-marker`, {
+            method, ...(!['GET', 'HEAD'].includes(method) ? { body: 'body-secret-marker' } : {}),
+            headers: {
+              origin: 'https://untrusted.example', 'if-none-match': '"cached-private-document"',
+              'access-control-request-headers': 'Authorization',
+              ...(authenticated ? { authorization: 'Bearer valid-looking-test-token' } : {}),
+            },
+          });
+          const deniedDependency = () => { throw new Error('Private route consulted public dependencies'); };
+          const result = await handleRequest(request, new Proxy({}, { get: deniedDependency }), {
+            fetchImpl: deniedDependency, makeRewriter: deniedDependency,
+          });
+          assert.equal(result.status, 404, `${method} ${host}${path}`);
+          assert.equal(await result.text(), method === 'HEAD' ? '' : 'Not found');
+          assert.equal(request.bodyUsed, false);
+          assert.equal(result.headers.get('cache-control'), 'no-store');
+          assert.equal(result.headers.get('x-robots-tag'), 'noindex, nofollow, noarchive');
+          assert.equal(result.headers.get('x-content-type-options'), 'nosniff');
+          assert.equal(result.headers.get('content-type'), 'text/plain; charset=utf-8');
+          for (const [name] of result.headers) assert.ok(!name.startsWith('access-control-'), name);
+          for (const name of ['etag', 'last-modified', 'location', 'set-cookie', 'www-authenticate']) {
+            assert.equal(result.headers.get(name), null, name);
+          }
+        }
+      }
+    }
+  }
+});
+
+test('private-LLM denial normalizes one encoded path pass, case, separators, trailing slashes, and URL dot segments', async () => {
+  const paths = [
+    '/LLMS.TXT', '/Llms-Full.TxT/', '/INTERNAL/LLMS.TXT/',
+    '/%6clms%2etxt', '/%6c%6cms-full.txt/', '/%69nternal/llms.txt',
+    '/internal%2Fllms.txt', '/internal%5cllms.txt/', '//internal///llms.txt//',
+    '/internal/./llms.txt', '/x/%2e%2e/internal/llms.txt', '/internal%2f.%2Fllms.txt',
+    '/internal%2f..%2Fllms.txt', '/internal%2f..%2Fllms-full.txt',
+  ];
+  for (const path of paths) {
+    const result = await handleRequest(new Request(`https://www.dunesub.de${path}?download=1`), {}, {
+      fetchImpl() { throw new Error(`Private path reached origin: ${path}`); },
+    });
+    assert.equal(result.status, 404, path);
+    assert.equal(await result.text(), 'Not found', path);
+    assert.equal(result.headers.get('cache-control'), 'no-store');
+  }
+});
+
+test('private-LLM denial leaves unrelated and nonmatching encoded paths on the normal one-fetch path', async () => {
+  for (const path of ['/llms.txt.bak', '/docs/llms.txt', '/internal/llms.txt/help', '/other/llms-full.txt',
+    '/%256clms.txt', '/llms.txt%3fextra', '/llms.txt/%', `/${'a'.repeat(8_193)}`]) {
+    const f = fixture({ raw: null });
+    const request = new Request(`https://dunesub.de${path}`);
+    const result = await handleRequest(request, f.env, f.deps);
+    assert.equal(result, f.origin, path);
+    assert.deepEqual(f.requests, [request], path);
+    assert.equal(await result.text(), page);
+  }
+});
+
 test('both public hosts fetch the original request with URL, query, cookies, and authorization intact', async () => {
   for (const host of ['dunesub.de', 'www.dunesub.de']) {
     const f = fixture({ raw: null });

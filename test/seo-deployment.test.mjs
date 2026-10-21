@@ -7,6 +7,7 @@ import {
   CloudflareClient, buildWranglerConfig, configure, deploy, ensureResources,
   requireCredentials, runWrangler, status, validateConfig, withSecretsFile,
 } from '../scripts/seo-agent.mjs';
+import { INTERNAL_LLMS_SECRET_NAMES, sealInternalLlms } from '../scripts/internal-llms.mjs';
 
 const config = {
   siteUrl: 'https://dunesub.de', siteName: 'DuneSub',
@@ -15,6 +16,12 @@ const config = {
   queueName: 'dunesub-seo-agent-drafts', namespaceTitle: 'dunesub-seo-overrides',
 };
 const credentials = { CLOUDFLARE_API_TOKEN: 'test-cloudflare-credential', AGENT_TOKEN: 'test-distinct-agent-credential' };
+const bridge = {
+  INTERNAL_LLMS_PROVIDER: 'yubikey-piv',
+  INTERNAL_LLMS_BRIDGE_URL: 'https://hardware-bridge.example.com/internal/llms.txt',
+  INTERNAL_LLMS_BRIDGE_TOKEN: Buffer.alloc(32, 17).toString('base64url'),
+  INTERNAL_LLMS_BRIDGE_KEY_ID: `sha256:${'a'.repeat(64)}`,
+};
 const database = { name: config.databaseName, uuid: '12345678-1234-1234-1234-1234567890ab' };
 const namespace = { title: config.namespaceTitle, id: 'abcdef0123456789abcdef0123456789' };
 const queue = { queue_name: config.queueName, queue_id: 'fedcba9876543210fedcba9876543210' };
@@ -70,7 +77,7 @@ test('SEO deployment configuration targets dunesub and preserves approval policy
   assert.equal(generated.ai.binding, 'AI');
   const text = await readFile(join(rootDir, 'services/seo-agent/wrangler.jsonc'), 'utf8');
   assert.match(text, /LOCAL PLACEHOLDERS ONLY/);
-  assert.doesNotMatch(text, /AGENT_TOKEN|CLOUDFLARE_API_TOKEN/);
+  assert.doesNotMatch(text, /AGENT_TOKEN|CLOUDFLARE_API_TOKEN|INTERNAL_LLMS_/);
 });
 
 test('configuration rejects secret fields, account emails, URL credentials, and unsafe resource names', () => {
@@ -85,6 +92,22 @@ test('configuration rejects secret fields, account emails, URL credentials, and 
   ]) assert.throws(() => validateConfig(invalid));
   assert.equal(validateConfig({ ...config, siteUrl: 'https://dunesub.de/' }).siteUrl, 'https://dunesub.de');
   assert.throws(() => buildWranglerConfig(config, { databaseId: '00000000-0000-0000-0000-000000000000', namespaceId: namespace.id }), /invalid resource/);
+});
+
+test('dashboard authentication uses an explicit canonical DNS origin distinct from the public site', () => {
+  const authOrigin = 'https://dunesub-seo-agent.dunesub-test.workers.dev';
+  assert.equal(validateConfig({ ...config, authOrigin }).authOrigin, authOrigin);
+  assert.equal(buildWranglerConfig({ ...config, authOrigin }).vars.AUTH_ORIGIN, authOrigin);
+  assert.equal(buildWranglerConfig(config).vars.AUTH_ORIGIN, undefined);
+  for (const invalid of [
+    '', null, 123, 'http://agent.example.com', config.siteUrl,
+    'https://agent.example.com/', 'https://Agent.example.com', 'https://agent.example.com:443',
+    'https://agent.example.com:8443', 'https://user:password@agent.example.com',
+    'https://agent.example.com/dashboard', 'https://agent.example.com?x=1', 'https://agent.example.com#x',
+    'https://*.example.com', 'https://agent.example.com.', 'https://localhost',
+    'https://agent.localhost', 'https://agent.local', 'https://agent.internal',
+    'https://127.0.0.1', 'https://2130706433', 'https://[::1]',
+  ]) assert.throws(() => validateConfig({ ...config, authOrigin: invalid }), /authOrigin/);
 });
 
 test('sitemap aliases are explicit HTTPS origins and are passed only to the crawler', () => {
@@ -134,6 +157,66 @@ test('account mismatch and unavailable dependencies fail before remote requests'
   await rm(join(rootDir, 'services/seo-agent/node_modules'), { recursive: true });
   await assert.rejects(deploy({ rootDir, env: credentials, fetchImpl: () => { calls++; } }), /seo:install/);
   assert.equal(calls, 0);
+});
+
+test('invalid optional internal-document secrets fail before every deployment effect', async t => {
+  const rootDir = await fixture(t);
+  const sealed = await sealInternalLlms({ plaintext: '# Internal platform reference', siteUrl: config.siteUrl });
+  let calls = 0;
+  for (const extra of [
+    { INTERNAL_LLMS_KEY: sealed.key },
+    { INTERNAL_LLMS_CIPHERTEXT: sealed.envelope },
+    { INTERNAL_LLMS_KEY: credentials.AGENT_TOKEN, INTERNAL_LLMS_CIPHERTEXT: sealed.envelope },
+    { INTERNAL_LLMS_KEY: sealed.key, INTERNAL_LLMS_CIPHERTEXT: sealed.envelope.replace('AES-256-GCM', 'AES-256-XTS') },
+    { INTERNAL_LLMS_KEY: sealed.key, INTERNAL_LLMS_CIPHERTEXT: (await sealInternalLlms({ plaintext: '# Other platform', siteUrl: 'https://other.example' })).envelope },
+    { INTERNAL_LLMS_PROVIDER: 'unknown' },
+    { ...bridge, INTERNAL_LLMS_BRIDGE_TOKEN: '' },
+    { ...bridge, INTERNAL_LLMS_BRIDGE_TOKEN: credentials.AGENT_TOKEN },
+    { ...bridge, INTERNAL_LLMS_KEY: sealed.key },
+    { ...bridge, INTERNAL_LLMS_BRIDGE_URL: 'https://localhost/internal/llms.txt' },
+  ]) {
+    await assert.rejects(deploy({ rootDir, env: { ...credentials, ...extra }, fetchImpl: () => { calls++; }, wrangler: () => { calls++; } }));
+    await assert.rejects(access(join(rootDir, 'services/seo-agent/wrangler.jsonc')), { code: 'ENOENT' });
+  }
+  assert.equal(calls, 0);
+});
+
+test('a self-referencing bridge fails after read-only hostname discovery and before generated files or remote writes', async t => {
+  const rootDir = await fixture(t);
+  const api = mockApi();
+  await assert.rejects(deploy({ rootDir, env: { ...credentials, ...bridge,
+    INTERNAL_LLMS_BRIDGE_URL: 'https://dunesub-seo-agent.dunesub-test.workers.dev/internal/llms.txt' },
+    fetchImpl: api.fetchImpl, wrangler: () => assert.fail('Wrangler must not run') }), /distinct from the control Worker/);
+  assert.equal(api.calls.length, 1);
+  assert.equal(api.calls[0].options.method, 'GET');
+  assert.ok(api.calls[0].url.endsWith('/workers/subdomain'));
+  await assert.rejects(access(join(rootDir, 'services/seo-agent/wrangler.jsonc')), { code: 'ENOENT' });
+});
+
+test('an authentication origin mismatch fails after read-only discovery and before generated files or remote writes', async t => {
+  for (const authOrigin of ['https://other-account.workers.dev', 'https://dashboard.example.com']) {
+    const rootDir = await fixture(t, { ...config, authOrigin });
+    const target = join(rootDir, 'services/seo-agent/wrangler.jsonc');
+    const original = '// existing configuration must survive a failed origin check\n';
+    await writeFile(target, original);
+    const api = mockApi({ absent: true });
+    await assert.rejects(deploy({ rootDir, env: credentials, fetchImpl: api.fetchImpl,
+      wrangler: () => assert.fail('Wrangler must not run') }), /authOrigin does not match/);
+    assert.equal(api.calls.length, 1);
+    assert.equal(api.calls[0].options.method, 'GET');
+    assert.ok(api.calls[0].url.endsWith('/workers/subdomain'));
+    assert.equal(await readFile(target, 'utf8'), original);
+  }
+});
+
+test('a verified authentication origin is published only as a non-secret control Worker variable', async t => {
+  const authOrigin = 'https://dunesub-seo-agent.dunesub-test.workers.dev';
+  const rootDir = await fixture(t, { ...config, authOrigin });
+  const api = mockApi();
+  const result = await deploy({ rootDir, env: credentials, fetchImpl: api.fetchImpl, wrangler: async () => {} });
+  assert.equal(result.url, authOrigin);
+  const generated = await readFile(join(rootDir, 'services/seo-agent/wrangler.jsonc'), 'utf8');
+  assert.equal(JSON.parse(generated.slice(generated.indexOf('{'))).vars.AUTH_ORIGIN, authOrigin);
 });
 
 test('resource provisioning reuses existing exact-name resources without POST', async () => {
@@ -191,11 +274,13 @@ test('transport failures and invalid API responses are sanitized without retry',
 });
 
 test('private temporary secret files have restrictive permissions and are cleaned after success or failure', async () => {
+  const sealed = await sealInternalLlms({ plaintext: '# Private reference', siteUrl: config.siteUrl });
+  const secrets = { AGENT_TOKEN: credentials.AGENT_TOKEN, INTERNAL_LLMS_KEY: sealed.key, INTERNAL_LLMS_CIPHERTEXT: sealed.envelope };
   for (const fail of [false, true]) {
     let path;
-    const work = withSecretsFile({ AGENT_TOKEN: credentials.AGENT_TOKEN }, async filename => {
+    const work = withSecretsFile(secrets, async filename => {
       path = filename;
-      assert.deepEqual(JSON.parse(await readFile(filename, 'utf8')), { AGENT_TOKEN: credentials.AGENT_TOKEN });
+      assert.deepEqual(JSON.parse(await readFile(filename, 'utf8')), secrets);
       assert.equal((await stat(filename)).mode & 0o777, 0o600);
       assert.equal((await stat(dirname(filename))).mode & 0o777, 0o700);
       if (fail) throw new Error('simulated publish failure');
@@ -231,6 +316,36 @@ test('deployment orders schema before publish, passes a private secret file, and
   assert.ok(generated.includes(database.uuid));
   assert.ok(generated.includes(namespace.id));
   assert.ok(!generated.includes(credentials.AGENT_TOKEN));
+});
+
+test('internal-document provider groups publish atomically without CLI, callback env, or generated vars, and absent settings retain remote bindings', async t => {
+  const rootDir = await fixture(t);
+  const sealed = await sealInternalLlms({ plaintext: '# Private reference', siteUrl: config.siteUrl });
+  const optional = { INTERNAL_LLMS_KEY: sealed.key, INTERNAL_LLMS_CIPHERTEXT: sealed.envelope };
+  // Ordinary redeploys omit optional values rather than sending empty values.
+  // The pinned Wrangler --secrets-file path retains unlisted remote secrets.
+  for (const extra of [optional, bridge, {}, Object.fromEntries(INTERNAL_LLMS_SECRET_NAMES.map(name => [name, '']))]) {
+    const { fetchImpl } = mockApi();
+    const publications = [];
+    let secretFile;
+    await deploy({ rootDir, env: { ...credentials, ...extra }, fetchImpl, wrangler: async (args, context) => {
+      for (const secret of [sealed.key, sealed.envelope, ...Object.values(bridge)]) assert.ok(!args.includes(secret));
+      for (const name of INTERNAL_LLMS_SECRET_NAMES) assert.equal(context.env[name], undefined);
+      assert.equal(context.env.AGENT_TOKEN, undefined);
+      if (!args.includes('--secrets-file')) return;
+      secretFile = args.at(-1);
+      publications.push(args);
+      const published = JSON.parse(await readFile(secretFile, 'utf8'));
+      assert.deepEqual(published, { AGENT_TOKEN: credentials.AGENT_TOKEN,
+        ...(extra === optional ? { ...optional, INTERNAL_LLMS_PROVIDER: 'software' } : extra === bridge ? bridge : {}) });
+    } });
+    assert.deepEqual(publications, [['deploy', '--secrets-file', secretFile]]);
+    await assert.rejects(access(secretFile), { code: 'ENOENT' });
+    const generated = await readFile(join(rootDir, 'services/seo-agent/wrangler.jsonc'), 'utf8');
+    assert.doesNotMatch(generated, /INTERNAL_LLMS_/);
+    assert.ok(!generated.includes(sealed.key));
+    assert.ok(!generated.includes(sealed.envelope));
+  }
 });
 
 test('schema failure prevents publishing; publish failure removes the secret file without retry', async t => {
@@ -272,19 +387,20 @@ test('read-only status checks both Cloudflare and authenticated /status without 
   await assert.rejects(status({ rootDir, env: credentials, fetchImpl: bad.fetchImpl }), /could not be verified/);
 });
 
-test('Wrangler children inherit proxy and CA settings, omit AGENT_TOKEN, and suppress credential output', {
+test('Wrangler children inherit proxy and CA settings, omit runtime secrets, and suppress credential output', {
   skip: Number(process.versions.node.split('.')[0]) < 24 ? 'Worker deployment and proxy-aware child execution require Node 24+.' : false,
 }, async t => {
   const rootDir = await fixture(t);
   const probe = join(rootDir, 'probe.json');
   const binary = join(rootDir, 'services/seo-agent/node_modules/wrangler/bin/wrangler.js');
-  await writeFile(binary, `const fs = require('node:fs');\nfs.writeFileSync(process.env.SEO_TEST_PROBE, JSON.stringify({proxy: process.env.HTTPS_PROXY, ca: process.env.SSL_CERT_FILE, agent: process.env.AGENT_TOKEN, cf: !!process.env.CLOUDFLARE_API_TOKEN, log: process.env.WRANGLER_LOG_PATH, config: process.env.XDG_CONFIG_HOME, cache: process.env.XDG_CACHE_HOME, configMode: fs.statSync(process.env.XDG_CONFIG_HOME + '/.wrangler').mode & 511, cacheMode: fs.statSync(process.env.XDG_CACHE_HOME + '/.wrangler').mode & 511, args: process.argv.slice(2)}));\nconsole.error(process.env.CLOUDFLARE_API_TOKEN);\nprocess.exit(process.env.SEO_TEST_FAIL ? 1 : 0);\n`);
-  const env = { ...process.env, ...credentials, SEO_TEST_PROBE: probe, HTTPS_PROXY: 'http://127.0.0.1:9', SSL_CERT_FILE: '/test/session-ca.pem' };
+  await writeFile(binary, `const fs = require('node:fs');\nfs.writeFileSync(process.env.SEO_TEST_PROBE, JSON.stringify({proxy: process.env.HTTPS_PROXY, ca: process.env.SSL_CERT_FILE, agent: process.env.AGENT_TOKEN, internalNames: Object.keys(process.env).filter(name => name.startsWith('INTERNAL_LLMS_')), cf: !!process.env.CLOUDFLARE_API_TOKEN, log: process.env.WRANGLER_LOG_PATH, config: process.env.XDG_CONFIG_HOME, cache: process.env.XDG_CACHE_HOME, configMode: fs.statSync(process.env.XDG_CONFIG_HOME + '/.wrangler').mode & 511, cacheMode: fs.statSync(process.env.XDG_CACHE_HOME + '/.wrangler').mode & 511, args: process.argv.slice(2)}));\nconsole.error(process.env.CLOUDFLARE_API_TOKEN);\nprocess.exit(process.env.SEO_TEST_FAIL ? 1 : 0);\n`);
+  const env = { ...process.env, ...credentials, ...Object.fromEntries(INTERNAL_LLMS_SECRET_NAMES.map(name => [name, 'private-fixture'])), SEO_TEST_PROBE: probe, HTTPS_PROXY: 'http://127.0.0.1:9', SSL_CERT_FILE: '/test/session-ca.pem' };
   await runWrangler(['deploy', '--dry-run'], { rootDir, env, accountId: config.accountId });
   const recorded = JSON.parse(await readFile(probe, 'utf8'));
   assert.equal(recorded.proxy, env.HTTPS_PROXY);
   assert.equal(recorded.ca, env.SSL_CERT_FILE);
   assert.equal(recorded.agent, undefined);
+  assert.deepEqual(recorded.internalNames, []);
   assert.equal(recorded.cf, true);
   assert.equal(recorded.configMode, 0o700);
   assert.equal(recorded.cacheMode, 0o700);

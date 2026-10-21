@@ -171,3 +171,42 @@ CREATE TABLE IF NOT EXISTS citations (
   error TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_citations_key ON citations (engine, query, checked_at);
+
+-- Dashboard authentication is opt-in through AUTH_ORIGIN. The owner epoch is
+-- a purpose-bound digest of the Worker secret and configured origin; rotating
+-- either invalidates previously enrolled credentials, challenges and sessions.
+-- Neither AGENT_TOKEN nor raw session tokens are stored here.
+CREATE TABLE IF NOT EXISTS auth_passkeys (
+  id TEXT PRIMARY KEY,
+  owner_epoch TEXT NOT NULL,
+  label TEXT NOT NULL,
+  public_key TEXT NOT NULL,          -- canonical base64url COSE public key
+  counter INTEGER NOT NULL CHECK (counter >= 0),
+  transports TEXT NOT NULL,          -- JSON array of authenticator transports
+  created_at INTEGER NOT NULL,      -- Unix seconds
+  revision INTEGER NOT NULL DEFAULT 0,
+  last_auth_nonce TEXT               -- unique assertion commit marker
+);
+CREATE INDEX IF NOT EXISTS idx_auth_passkeys_owner ON auth_passkeys (owner_epoch);
+
+CREATE TABLE IF NOT EXISTS auth_challenges (
+  id TEXT PRIMARY KEY,
+  owner_epoch TEXT NOT NULL,
+  purpose TEXT NOT NULL CHECK (purpose IN ('register', 'login')),
+  origin TEXT NOT NULL,
+  nonce TEXT NOT NULL,
+  label TEXT,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_auth_challenges_expiry ON auth_challenges (expires_at);
+
+CREATE TABLE IF NOT EXISTS auth_sessions (
+  token_hash TEXT PRIMARY KEY,
+  owner_epoch TEXT NOT NULL,
+  passkey_id TEXT REFERENCES auth_passkeys (id) ON DELETE CASCADE,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_auth_sessions_owner ON auth_sessions (owner_epoch, created_at);
+CREATE INDEX IF NOT EXISTS idx_auth_sessions_passkey ON auth_sessions (passkey_id);

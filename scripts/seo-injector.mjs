@@ -3,6 +3,7 @@ import { access, chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { CloudflareClient, runWrangler, validateConfig } from './seo-agent.mjs';
+import { INTERNAL_LLMS_SECRET_NAMES } from './internal-llms.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const API = 'https://api.cloudflare.com/client/v4';
@@ -229,6 +230,7 @@ export async function build({ rootDir = ROOT, env = process.env, wrangler = runW
   await configure({ rootDir });
   const childEnv = { ...env };
   delete childEnv.AGENT_TOKEN;
+  for (const name of INTERNAL_LLMS_SECRET_NAMES) delete childEnv[name];
   delete childEnv.CLOUDFLARE_API_TOKEN;
   const configPath = resolve(rootDir, 'services/seo-injector/wrangler.jsonc');
   const outDir = resolve(rootDir, 'services/seo-injector/dist');
@@ -291,6 +293,7 @@ export async function deploy({ rootDir = ROOT, env = process.env, fetchImpl = gl
   const configPath = resolve(rootDir, 'services/seo-injector/wrangler.jsonc');
   const childEnv = { ...env };
   delete childEnv.AGENT_TOKEN;
+  for (const name of INTERNAL_LLMS_SECRET_NAMES) delete childEnv[name];
   const context = { rootDir, env: childEnv, accountId: config.accountId };
   progress('Checking the injector bundle locally.');
   await wrangler(['deploy', '--dry-run', '--config', configPath], context);
@@ -342,7 +345,7 @@ export async function main(args = process.argv.slice(2)) {
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   main().catch(error => {
     let message = typeof error?.message === 'string' ? error.message : 'Operation failed.';
-    for (const token of [process.env.CLOUDFLARE_API_TOKEN, process.env.AGENT_TOKEN]) {
+    for (const token of [process.env.CLOUDFLARE_API_TOKEN, process.env.AGENT_TOKEN, ...INTERNAL_LLMS_SECRET_NAMES.map(name => process.env[name])]) {
       if (token) message = message.replaceAll(token, '[redacted]');
     }
     process.stderr.write(`SEO injector: ${message}\n`);

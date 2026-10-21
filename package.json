@@ -4,7 +4,9 @@
   "private": true,
   "description": "Ecosystem policy tooling and a self-contained Cloudflare SEO agent service",
   "type": "module",
-  "engines": { "node": ">=22.8" },
+  "engines": {
+    "node": ">=22.8"
+  },
   "bin": {
     "dune-sync": "src/dune-sync.mjs",
     "security-scan": "src/security-scan.mjs"
@@ -19,7 +21,7 @@
     "seo:check": "npm run seo:configure && npm run check --prefix services/seo-agent",
     "seo:test": "npm test --prefix services/seo-agent",
     "seo:build": "npm run seo:configure && npm run build --prefix services/seo-agent",
-    "seo:smoke": "npm run seo:build && node scripts/test-seo-agent-runtime.mjs",
+    "seo:smoke": "npm run seo:build && node scripts/test-seo-agent-runtime.mjs && npm run seo:auth:smoke",
     "seo:verify": "npm run seo:provenance && npm run seo:check && npm run seo:test && npm run seo:smoke",
     "seo:dev": "npm run seo:configure && npm run dev --prefix services/seo-agent",
     "seo:deploy": "node --use-env-proxy scripts/seo-agent.mjs deploy",
@@ -30,6 +32,7 @@
     "seo:injector:status": "node --use-env-proxy scripts/seo-injector.mjs status",
     "seo:injector:deploy": "node --use-env-proxy scripts/seo-injector.mjs deploy",
     "test": "node scripts/run-tests.mjs",
-    "check": "npm run test && npm run validate:payload && npm run security:scan"
+    "check": "npm run test && npm run validate:payload && npm run security:scan",
+    "seo:auth:smoke": "node scripts/test-seo-auth-runtime.mjs"
   }
 }
