@@ -1,11 +1,17 @@
 import assert from 'node:assert/strict';
 import { webcrypto } from 'node:crypto';
 import { test } from 'node:test';
-import { sealInternalLlms, validateInternalLlmsSecrets } from '../scripts/internal-llms.mjs';
+import { INTERNAL_LLMS_SECRET_NAMES, sealInternalLlms, validateInternalLlmsSecrets } from '../scripts/internal-llms.mjs';
 
 const siteUrl = 'https://www.dunesub.de';
 const plaintext = '# DuneSub Ecosystem\n\nInternal reference. Use approved public platform documentation.\n';
 const toEnv = ({ key, envelope }) => ({ INTERNAL_LLMS_KEY: key, INTERNAL_LLMS_CIPHERTEXT: envelope });
+const bridge = {
+  INTERNAL_LLMS_PROVIDER: 'yubikey-piv',
+  INTERNAL_LLMS_BRIDGE_URL: 'https://hardware-bridge.example.com/internal/llms.txt',
+  INTERNAL_LLMS_BRIDGE_TOKEN: Buffer.alloc(32, 17).toString('base64url'),
+  INTERNAL_LLMS_BRIDGE_KEY_ID: `sha256:${'a'.repeat(64)}`,
+};
 
 test('internal document roundtrips through an authenticated bounded envelope without plaintext in its serialization', async () => {
   const sealed = await sealInternalLlms({ plaintext, siteUrl });
@@ -18,7 +24,7 @@ test('internal document roundtrips through an authenticated bounded envelope wit
   assert.equal(Buffer.from(envelope.nonce, 'base64url').length, 12);
   assert.equal(Buffer.from(envelope.ciphertext, 'base64url').length, Buffer.byteLength(plaintext) + 16);
   assert.ok(!sealed.envelope.includes(plaintext));
-  assert.deepEqual(await validateInternalLlmsSecrets({ env: toEnv(sealed), siteUrl: siteUrl + '/' }), toEnv(sealed));
+  assert.deepEqual(await validateInternalLlmsSecrets({ env: toEnv(sealed), siteUrl: siteUrl + '/' }), { INTERNAL_LLMS_PROVIDER: 'software', ...toEnv(sealed) });
 });
 
 test('encryption generates independent keys and fresh nonces even when a key is supplied', async () => {
@@ -105,4 +111,54 @@ test('authentication alone does not accept binary, empty, or NUL plaintext', asy
     const envelope = JSON.stringify({ version: 1, algorithm: 'AES-256-GCM', nonce: Buffer.from(nonce).toString('base64url'), ciphertext: Buffer.from(ciphertext).toString('base64url') });
     await assert.rejects(validateInternalLlmsSecrets({ env: { INTERNAL_LLMS_KEY: sealed.key, INTERNAL_LLMS_CIPHERTEXT: envelope }, siteUrl }));
   }
+});
+
+test('provider selection is explicit and complete, with legacy software pairs selecting software authoritatively', async () => {
+  const sealed = await sealInternalLlms({ plaintext, siteUrl });
+  assert.deepEqual(await validateInternalLlmsSecrets({ env: bridge, siteUrl }), bridge);
+  assert.deepEqual(await validateInternalLlmsSecrets({ env: { ...toEnv(sealed), INTERNAL_LLMS_PROVIDER: 'software' }, siteUrl }), {
+    ...toEnv(sealed), INTERNAL_LLMS_PROVIDER: 'software',
+  });
+  assert.deepEqual(await validateInternalLlmsSecrets({ env: Object.fromEntries(INTERNAL_LLMS_SECRET_NAMES.map(name => [name, ''])), siteUrl }), {});
+  for (const env of [
+    { INTERNAL_LLMS_PROVIDER: 'software' },
+    { INTERNAL_LLMS_PROVIDER: 'unknown' },
+    { INTERNAL_LLMS_PROVIDER: 'yubikey-piv' },
+    { ...bridge, INTERNAL_LLMS_PROVIDER: '' },
+    { ...bridge, INTERNAL_LLMS_PROVIDER: undefined },
+    { ...bridge, INTERNAL_LLMS_PROVIDER: 'software' },
+    { ...bridge, ...toEnv(sealed) },
+    ...Object.keys(bridge).filter(name => name !== 'INTERNAL_LLMS_PROVIDER').map(name => ({ ...bridge, [name]: '' })),
+  ]) await assert.rejects(validateInternalLlmsSecrets({ env, siteUrl }));
+});
+
+test('bridge credentials and key pins are bounded and independent without network access', async () => {
+  for (const token of ['short', bridge.INTERNAL_LLMS_BRIDGE_TOKEN + '=', 'A'.repeat(44), bridge.INTERNAL_LLMS_BRIDGE_TOKEN.slice(0, -1) + 'B', null]) {
+    await assert.rejects(validateInternalLlmsSecrets({ env: { ...bridge, INTERNAL_LLMS_BRIDGE_TOKEN: token }, siteUrl }), /32 independent random bytes/);
+  }
+  for (const credential of ['AGENT_TOKEN', 'CLOUDFLARE_API_TOKEN']) {
+    await assert.rejects(validateInternalLlmsSecrets({ env: { ...bridge, [credential]: bridge.INTERNAL_LLMS_BRIDGE_TOKEN }, siteUrl }), /independent/);
+  }
+  for (const pin of ['a'.repeat(64), `sha256:${'A'.repeat(64)}`, `sha256:${'g'.repeat(64)}`, `sha256:${'a'.repeat(63)}`, null]) {
+    await assert.rejects(validateInternalLlmsSecrets({ env: { ...bridge, INTERNAL_LLMS_BRIDGE_KEY_ID: pin }, siteUrl }), /attested public key/);
+  }
+});
+
+test('bridge destinations reject public-site recursion, credential injection, local addresses, and ambiguous URL forms', async () => {
+  for (const url of [
+    siteUrl + '/internal/llms.txt', 'http://hardware-bridge.example.com/internal/llms.txt',
+    'https://hardware-bridge.example.com:8443/internal/llms.txt',
+    'https://user:password@hardware-bridge.example.com/internal/llms.txt',
+    'https://hardware-bridge.example.com/internal/llms.txt?token=hidden',
+    'https://hardware-bridge.example.com/internal/llms.txt#fragment',
+    'https://hardware-bridge.example.com/internal/%6clms.txt',
+    'https://hardware-bridge.example.com/internal/llms.txt/',
+    'https://hardware-bridge.example.com/internal/../internal/llms.txt',
+    'https://127.0.0.1/internal/llms.txt', 'https://2130706433/internal/llms.txt',
+    'https://[::1]/internal/llms.txt', 'https://192.168.1.1/internal/llms.txt',
+    'https://localhost/internal/llms.txt', 'https://test.localhost/internal/llms.txt',
+    'https://bridge.local/internal/llms.txt', 'https://bridge/internal/llms.txt',
+    'https://hardware-bridge.example.com./internal/llms.txt',
+    'https://HARDWARE-BRIDGE.example.com/internal/llms.txt', null,
+  ]) await assert.rejects(validateInternalLlmsSecrets({ env: { ...bridge, INTERNAL_LLMS_BRIDGE_URL: url }, siteUrl }), /dedicated canonical HTTPS DNS origin/);
 });

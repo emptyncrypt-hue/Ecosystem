@@ -4,6 +4,7 @@ import { access, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/p
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { runWrangler } from '../scripts/seo-agent.mjs';
+import { INTERNAL_LLMS_SECRET_NAMES } from '../scripts/internal-llms.mjs';
 import {
   InjectorCloudflareClient, build, buildWranglerConfig, configure, deploy,
   requireCredentials, status, validateDnsRecords, validateRoutes,
@@ -18,6 +19,7 @@ const config = {
 const zoneId = '6552a81a371b916ebf354a2a0b08f45d';
 const namespaceId = 'abcdef0123456789abcdef0123456789';
 const env = { CLOUDFLARE_API_TOKEN: 'cloudflare-test-secret' };
+const privateInternalEnv = Object.fromEntries(INTERNAL_LLMS_SECRET_NAMES.map(name => [name, 'private-internal-fixture']));
 const zone = {
   id: zoneId, name: 'dunesub.de', status: 'active', type: 'full',
   account: { id: config.accountId }, name_servers: ['frank.ns.cloudflare.com', 'reza.ns.cloudflare.com'],
@@ -120,14 +122,13 @@ test('canonical www configuration retains both apex and www route patterns', asy
 test('build checks the local injector using shared private Wrangler execution without credentials', async t => {
   const rootDir = await fixture(t);
   const invocations = [];
-  const result = await build({ rootDir, env: { ...env, AGENT_TOKEN: 'unused-control-secret', INTERNAL_LLMS_KEY: 'private-key-fixture', INTERNAL_LLMS_CIPHERTEXT: 'private-envelope-fixture', HTTPS_PROXY: 'http://127.0.0.1:9' }, wrangler: async (args, context) => {
+  const result = await build({ rootDir, env: { ...env, ...privateInternalEnv, AGENT_TOKEN: 'unused-control-secret', HTTPS_PROXY: 'http://127.0.0.1:9' }, wrangler: async (args, context) => {
     invocations.push(args);
     assert.equal(context.rootDir, rootDir);
     assert.equal(context.accountId, config.accountId);
     assert.equal(context.env.CLOUDFLARE_API_TOKEN, undefined);
     assert.equal(context.env.AGENT_TOKEN, undefined);
-    assert.equal(context.env.INTERNAL_LLMS_KEY, undefined);
-    assert.equal(context.env.INTERNAL_LLMS_CIPHERTEXT, undefined);
+    for (const name of INTERNAL_LLMS_SECRET_NAMES) assert.equal(context.env[name], undefined);
     assert.equal(context.env.HTTPS_PROXY, 'http://127.0.0.1:9');
     assert.match(await readFile(generatedPath(rootDir), 'utf8'), /LOCAL PLACEHOLDERS ONLY/);
   } });
@@ -274,14 +275,13 @@ test('successful deploy shares control KV and supplies the absolute injector con
   const rootDir = await fixture(t);
   const api = mockApi({ routes: [{ pattern: 'unrelated.example/*', script: 'other-worker' }] });
   const invocations = [];
-  const result = await deploy({ rootDir, env: { ...env, AGENT_TOKEN: 'must-not-be-used', INTERNAL_LLMS_KEY: 'private-key-fixture', INTERNAL_LLMS_CIPHERTEXT: 'private-envelope-fixture' }, fetchImpl: api.fetchImpl,
+  const result = await deploy({ rootDir, env: { ...env, ...privateInternalEnv, AGENT_TOKEN: 'must-not-be-used' }, fetchImpl: api.fetchImpl,
     wrangler: async (args, context) => {
       invocations.push(args);
       assert.equal(context.rootDir, rootDir);
       assert.equal(context.accountId, config.accountId);
       assert.equal(context.env.AGENT_TOKEN, undefined);
-    assert.equal(context.env.INTERNAL_LLMS_KEY, undefined);
-    assert.equal(context.env.INTERNAL_LLMS_CIPHERTEXT, undefined);
+      for (const name of INTERNAL_LLMS_SECRET_NAMES) assert.equal(context.env[name], undefined);
       assert.equal(context.env.CLOUDFLARE_API_TOKEN, env.CLOUDFLARE_API_TOKEN);
       const generated = JSON.parse((await readFile(generatedPath(rootDir), 'utf8')).replace(/^\/\/.*\n/, ''));
       assert.deepEqual(generated.kv_namespaces, [{ binding: 'SEO_OVERRIDES', id: namespaceId }]);
@@ -324,11 +324,11 @@ const config = args[args.indexOf('--config') + 1];
 const text = fs.readFileSync(config, 'utf8').replace(/^\\/\\/.*\\n/, '');
 const generated = JSON.parse(text);
 const calls = fs.existsSync(process.env.INJECTOR_TEST_PROBE) ? JSON.parse(fs.readFileSync(process.env.INJECTOR_TEST_PROBE, 'utf8')) : [];
-calls.push({ args, config, main: path.resolve(path.dirname(config), generated.main), cwd: process.cwd(), agentPresent: !!process.env.AGENT_TOKEN });
+calls.push({ args, config, main: path.resolve(path.dirname(config), generated.main), cwd: process.cwd(), agentPresent: !!process.env.AGENT_TOKEN, internalNames: Object.keys(process.env).filter(name => name.startsWith('INTERNAL_LLMS_')) });
 fs.writeFileSync(process.env.INJECTOR_TEST_PROBE, JSON.stringify(calls));
 `);
   const api = mockApi();
-  await deploy({ rootDir, env: { ...process.env, ...env, AGENT_TOKEN: 'unused-control-secret', INJECTOR_TEST_PROBE: probe }, fetchImpl: api.fetchImpl, wrangler: runWrangler });
+  await deploy({ rootDir, env: { ...process.env, ...env, ...privateInternalEnv, AGENT_TOKEN: 'unused-control-secret', INJECTOR_TEST_PROBE: probe }, fetchImpl: api.fetchImpl, wrangler: runWrangler });
   const calls = JSON.parse(await readFile(probe, 'utf8'));
   assert.equal(calls.length, 2);
   for (const call of calls) {
@@ -336,6 +336,7 @@ fs.writeFileSync(process.env.INJECTOR_TEST_PROBE, JSON.stringify(calls));
     assert.equal(call.main, join(rootDir, 'services/seo-injector/src/index.mjs'));
     assert.equal(call.cwd, join(rootDir, 'services/seo-agent'));
     assert.equal(call.agentPresent, false);
+    assert.deepEqual(call.internalNames, []);
     assert.equal(dirname(call.config), join(rootDir, 'services/seo-injector'));
   }
 });

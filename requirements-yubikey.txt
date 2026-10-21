@@ -1,0 +1,4 @@
+# Optional host provider only; Cloudflare Workers never load these packages.
+yubikey-manager==5.9.2
+cryptography==50.0.2
+pyscard==2.3.1

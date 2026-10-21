@@ -80,9 +80,10 @@
     "test/rules.test.ts": "61801c6a336b55369b73c9733ba81217047b7e75fc3a65eaec8e3c06436051d6",
     "tsconfig.json": "dab2f96028fc3661fc8ad1095a77185342fe2f8683a4c2c8345f961359f260dc",
     "wrangler.example.jsonc": "c71aa181d8038231e68e47fc5d5091547cee5aee66dc167e724f91086cb51362",
-    "env.d.ts": "d58ea4f8a8035db0db67bdba9391633666d4cd2c53b1e29d92fa741cc75a4769",
-    "src/internal-llms.ts": "b0035552386fec5f30834c26f20da266be38cdaf403734c56cfa29c247891dc5",
-    "test/internal-llms.test.ts": "f44e51ec4a3259ce9de2c2bb5aaee9b2a13efe099700b74426357435c66aef4d"
+    "env.d.ts": "d6a4d499c552f45f979809e02988708ff982e2f1328cec7857e72a00bdcef901",
+    "src/internal-llms.ts": "20e374a2b7e52f9fccff6202396cd562271b14f4b1c6c88b0346f7e4a1ff6556",
+    "test/internal-llms.test.ts": "f44e51ec4a3259ce9de2c2bb5aaee9b2a13efe099700b74426357435c66aef4d",
+    "test/yubikey-bridge.test.ts": "8b9d65aa76d7fa6b7dc0047d45223336c55364bb8e2f34bb240efe798c16ec43"
   },
   "patchedPaths": [
     ".gitignore",
@@ -119,9 +120,10 @@
     "src/index.ts": "Gate the exact internal llms.txt control route with the existing bearer authentication, private failure headers, and a separately encrypted read-only document handler."
   },
   "addedFiles": {
-    "env.d.ts": "Permanent secret binding types, optional trusted sitemap/homepage aliases, and private internal-context encryption secret names; contains names and types, never credential values.",
-    "src/internal-llms.ts": "Authenticated HTTPS-only internal document delivery using bounded AES-256-GCM ciphertext, independent Worker secret key, context binding, sanitized failures, and private/no-store headers; never accesses public overrides or AI.",
-    "test/internal-llms.test.ts": "Synthetic cryptographic and access-control coverage for internal document authentication, context binding, tampering, malformed configuration, bounds, private headers, HTTPS and HEAD/method behavior."
+    "env.d.ts": "Permanent control-plane secret binding types, optional trusted sitemap/homepage aliases, software encryption and YubiKey bridge provider configuration; contains names and types, never credential values.",
+    "src/internal-llms.ts": "Authenticated HTTPS-only internal document delivery with explicit software AES-256-GCM or independently authenticated YubiKey host bridge, strict context/configuration checks, bounded text, deadlines, enrollment fingerprint binding and private failures; hardware mode has no software fallback.",
+    "test/internal-llms.test.ts": "Synthetic cryptographic and access-control coverage for internal document authentication, context binding, tampering, malformed configuration, bounds, private headers, HTTPS and HEAD/method behavior.",
+    "test/yubikey-bridge.test.ts": "Synthetic bridge protocol coverage for authentication before contact, independent credentials, HTTPS destination validation, provider isolation, enrolled key pinning, bounded UTF-8 streaming, stalled reads, failures and HEAD semantics."
   },
   "notes": [
     "originalFiles hashes describe the exact upstream commit, not modified vendored files.",

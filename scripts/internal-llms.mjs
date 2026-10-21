@@ -1,9 +1,12 @@
 import { randomBytes, webcrypto } from 'node:crypto';
+import { isIP } from 'node:net';
 
 const encoder = new TextEncoder();
 const MAX_PLAINTEXT_BYTES = 2048;
 const MAX_ENVELOPE_BYTES = 4096;
-const SECRET_NAMES = ['INTERNAL_LLMS_KEY', 'INTERNAL_LLMS_CIPHERTEXT'];
+const SOFTWARE_SECRET_NAMES = ['INTERNAL_LLMS_KEY', 'INTERNAL_LLMS_CIPHERTEXT'];
+const BRIDGE_SECRET_NAMES = ['INTERNAL_LLMS_BRIDGE_URL', 'INTERNAL_LLMS_BRIDGE_TOKEN', 'INTERNAL_LLMS_BRIDGE_KEY_ID'];
+export const INTERNAL_LLMS_SECRET_NAMES = Object.freeze(['INTERNAL_LLMS_PROVIDER', ...SOFTWARE_SECRET_NAMES, ...BRIDGE_SECRET_NAMES]);
 
 function context(siteUrl) {
   let site;
@@ -75,13 +78,55 @@ export async function sealInternalLlms({ plaintext, siteUrl, key } = {}) {
   }
 }
 
-// Empty optional environment entries are absent (GitHub Actions resolves
-// unconfigured secrets to empty strings). One present entry is never accepted.
-// An absent pair leaves existing remote secrets intact during normal deploys.
+function validateBridgeSecrets(env, siteUrl) {
+  context(siteUrl);
+  const value = env.INTERNAL_LLMS_BRIDGE_URL;
+  let bridge;
+  try { if (typeof value === 'string' && value.length <= 512) bridge = new URL(value); } catch { /* Validated below. */ }
+  const hostname = bridge?.hostname ?? '';
+  const labels = hostname.split('.');
+  if (!bridge || bridge.protocol !== 'https:' || bridge.username || bridge.password || bridge.port
+      || bridge.search || bridge.hash || value !== bridge.origin + '/internal/llms.txt'
+      || bridge.origin === new URL(siteUrl).origin || isIP(hostname) || labels.length < 2
+      || hostname.length > 253 || /(?:^|\.)(?:localhost|local|internal)$/.test(hostname)
+      || !labels.every(label => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label))) {
+    throw new Error('INTERNAL_LLMS_BRIDGE_URL must be a dedicated canonical HTTPS DNS origin followed by /internal/llms.txt, without credentials, port, query, or fragment.');
+  }
+  const token = env.INTERNAL_LLMS_BRIDGE_TOKEN;
+  let tokenBytes;
+  try { tokenBytes = decode(token, 32, 32); }
+  catch { throw new Error('INTERNAL_LLMS_BRIDGE_TOKEN must be a canonical base64url encoding of 32 independent random bytes.'); }
+  finally { tokenBytes?.fill(0); }
+  if ([env.AGENT_TOKEN, env.CLOUDFLARE_API_TOKEN, env.INTERNAL_LLMS_KEY].some(value => value !== undefined && token === value)) {
+    throw new Error('INTERNAL_LLMS_BRIDGE_TOKEN must be independent of other credentials and encryption keys.');
+  }
+  if (typeof env.INTERNAL_LLMS_BRIDGE_KEY_ID !== 'string' || !/^sha256:[a-f0-9]{64}$/.test(env.INTERNAL_LLMS_BRIDGE_KEY_ID)) {
+    throw new Error('INTERNAL_LLMS_BRIDGE_KEY_ID must pin the attested public key as sha256 followed by 64 lowercase hexadecimal digits.');
+  }
+  return Object.fromEntries(['INTERNAL_LLMS_PROVIDER', ...BRIDGE_SECRET_NAMES].map(name => [name, env[name]]));
+}
+
+// Empty optional entries are absent (GitHub Actions returns empty strings for
+// unconfigured secrets). Every supplied provider group must be complete. An
+// absent group preserves remote bindings; selecting a mode is always explicit
+// in the upload, so retained bindings from another mode cannot activate it.
 export async function validateInternalLlmsSecrets({ env = {}, siteUrl } = {}) {
-  const present = SECRET_NAMES.map(name => env[name] !== undefined && env[name] !== '');
-  if (!present.some(Boolean)) return {};
-  if (!present.every(Boolean)) throw new Error('Set both INTERNAL_LLMS_KEY and INTERNAL_LLMS_CIPHERTEXT together, or leave both unset.');
+  const isPresent = name => env[name] !== undefined && env[name] !== '';
+  if (!INTERNAL_LLMS_SECRET_NAMES.some(isPresent)) return {};
+  const provider = env.INTERNAL_LLMS_PROVIDER;
+  if (provider !== undefined && provider !== '' && !['software', 'yubikey-piv'].includes(provider)) {
+    throw new Error('INTERNAL_LLMS_PROVIDER must be software or yubikey-piv.');
+  }
+  const softwarePresent = SOFTWARE_SECRET_NAMES.some(isPresent);
+  const bridgePresent = BRIDGE_SECRET_NAMES.some(isPresent);
+  if (provider === 'yubikey-piv') {
+    if (softwarePresent || !BRIDGE_SECRET_NAMES.every(isPresent)) {
+      throw new Error('The yubikey-piv provider requires all three bridge secrets and no supplied software encryption pair.');
+    }
+    return validateBridgeSecrets(env, siteUrl);
+  }
+  if (bridgePresent) throw new Error('Bridge secrets require the explicit yubikey-piv provider and cannot be mixed with software encryption secrets.');
+  if (!SOFTWARE_SECRET_NAMES.every(isPresent)) throw new Error('Set both INTERNAL_LLMS_KEY and INTERNAL_LLMS_CIPHERTEXT together, or leave every internal document setting unset.');
   const key = env.INTERNAL_LLMS_KEY;
   if (key === env.AGENT_TOKEN || key === env.CLOUDFLARE_API_TOKEN) {
     throw new Error('INTERNAL_LLMS_KEY must be independent of AGENT_TOKEN and CLOUDFLARE_API_TOKEN.');
@@ -96,7 +141,7 @@ export async function validateInternalLlmsSecrets({ env = {}, siteUrl } = {}) {
       plaintext = new Uint8Array(await webcrypto.subtle.decrypt({ name: 'AES-GCM', iv: nonce, additionalData, tagLength: 128 }, cryptoKey, ciphertext));
     } catch { throw new Error('Internal LLM document authentication failed; check the encryption key and site origin.'); }
     validatePlaintext(plaintext);
-    return { INTERNAL_LLMS_KEY: key, INTERNAL_LLMS_CIPHERTEXT: env.INTERNAL_LLMS_CIPHERTEXT };
+    return { INTERNAL_LLMS_PROVIDER: 'software', INTERNAL_LLMS_KEY: key, INTERNAL_LLMS_CIPHERTEXT: env.INTERNAL_LLMS_CIPHERTEXT };
   } finally {
     keyBytes.fill(0);
     plaintext?.fill(0);

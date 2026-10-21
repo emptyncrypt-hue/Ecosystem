@@ -4,9 +4,9 @@ DuneSub's internal context document is available only at the SEO control Worker'
 
 “Internal” means restricted to authenticated control-plane clients. This endpoint uses an Internet-reachable Cloudflare Worker; this change does not establish a private network, VPN, Cloudflare Access application, or new identity provider.
 
-## Encryption and storage boundary
+## Software provider encryption and storage boundary
 
-The document is encrypted with AES-256-GCM using an independent random 32-byte key, a fresh random 12-byte nonce for every encryption, and a 128-bit authentication tag. Its authenticated additional data binds the version, configured HTTPS site origin, and exact private route:
+The default `software` provider encrypts the document with AES-256-GCM using an independent random 32-byte key, a fresh random 12-byte nonce for every encryption, and a 128-bit authentication tag. Its authenticated additional data binds the version, configured HTTPS site origin, and exact private route:
 
 ```text
 dunesub-internal-llms:v1
@@ -18,7 +18,7 @@ Two separate Cloudflare Worker secret bindings hold the key and encrypted envelo
 
 The envelope contains only `version`, `algorithm`, `nonce`, and `ciphertext`. Version 1 uses canonical, unpadded base64url for the key, nonce, and authenticated ciphertext. Missing configuration, incorrect keys, malformed or altered envelopes, invalid text, and context mismatches fail closed with a generic error. The document is decrypted only for an authenticated HTTPS read; plaintext exists in request memory and the authorized HTTPS response.
 
-Cloudflare manages the secret bindings. This implementation makes no TPM, HSM, PKCS#11, hardware attestation, or customer-managed KMS claim. The repository's Google Cloud CMEK Terraform applies to the Google services it configures; it does not configure Cloudflare encryption. Archived cryptographic reports are historical source material, not proof of runtime enforcement.
+Cloudflare manages the software provider secret bindings. This mode makes no TPM, HSM, PKCS#11, hardware attestation, or customer-managed KMS claim. The optional [YubiKey PIV host provider](yubikey-piv.md) protects a document key with an attested on-device RSA key and an authenticated Mac bridge. It must be explicitly selected after real device enrollment; hardware mode never falls back to this software pair. The repository's Google Cloud CMEK Terraform applies to the Google services it configures; it does not configure Cloudflare encryption. Archived cryptographic reports are historical source material, not proof of runtime enforcement.
 
 ## Access and publication boundary
 
@@ -30,9 +30,9 @@ The public crawler still reports missing optional `/llms.txt` as informational. 
 
 ## Provisioning and updates
 
-The encryption helper in `scripts/internal-llms.mjs` seals a curated document in memory. Prepare content from verified public project facts and explicit operator guidance; exclude tokens, personal details, confidential archives, and unsupported infrastructure claims. Supply the key and envelope together as the two optional secret environment bindings when deploying the control Worker. Invalid or partial configuration fails before remote deployment effects.
+The encryption helper in `scripts/internal-llms.mjs` seals a curated document in memory. Prepare content from verified public project facts and explicit operator guidance; exclude tokens, personal details, confidential archives, and unsupported infrastructure claims. Supply the key and envelope together as the two optional secret environment bindings when deploying the control Worker. The deployment selects `INTERNAL_LLMS_PROVIDER=software` with that pair; absence of the provider binding retains legacy software behavior. Hardware bridge secrets form a separate complete group, described in the YubiKey guide. Invalid or partial configuration fails before remote deployment effects.
 
-Deployment sends `AGENT_TOKEN` and a supplied internal context pair in the same Worker upload. Its transient secrets file is outside the repository, restricted to its owner, and removed after the command. Credential values are not printed or passed as command-line arguments. Ordinary deployments that omit the pair retain existing remote secret bindings. Provisioning, publication, and failed mutations are not automatically retried.
+Deployment sends `AGENT_TOKEN` and a supplied internal context pair in the same Worker upload. Its transient secrets file is outside the repository, restricted to its owner, and removed after the command. Credential values are not printed or passed as command-line arguments. Ordinary deployments that omit every optional internal-context setting retain the existing remote provider and secret bindings. Provisioning, publication, and failed mutations are not automatically retried.
 
 For an update or rotation, seal the complete approved document with a fresh nonce and deploy a matching key/envelope pair atomically. Verify the authenticated response and public denials after deployment. Retain keys only in an appropriate secret manager; never commit them or copy decrypted output into logs or synchronization bundles.
 

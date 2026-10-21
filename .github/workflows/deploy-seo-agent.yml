@@ -33,6 +33,10 @@ jobs:
           AGENT_TOKEN: ${{ secrets.AGENT_TOKEN }}
           INTERNAL_LLMS_KEY: ${{ secrets.INTERNAL_LLMS_KEY }}
           INTERNAL_LLMS_CIPHERTEXT: ${{ secrets.INTERNAL_LLMS_CIPHERTEXT }}
+          INTERNAL_LLMS_PROVIDER: ${{ secrets.INTERNAL_LLMS_PROVIDER }}
+          INTERNAL_LLMS_BRIDGE_URL: ${{ secrets.INTERNAL_LLMS_BRIDGE_URL }}
+          INTERNAL_LLMS_BRIDGE_TOKEN: ${{ secrets.INTERNAL_LLMS_BRIDGE_TOKEN }}
+          INTERNAL_LLMS_BRIDGE_KEY_ID: ${{ secrets.INTERNAL_LLMS_BRIDGE_KEY_ID }}
         run: npm run seo:deploy
       - name: Verify deployed status
         env:

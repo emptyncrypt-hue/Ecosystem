@@ -4,7 +4,7 @@ import { access, chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { validateInternalLlmsSecrets } from './internal-llms.mjs';
+import { INTERNAL_LLMS_SECRET_NAMES, validateInternalLlmsSecrets } from './internal-llms.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const API = 'https://api.cloudflare.com/client/v4';
@@ -267,8 +267,7 @@ export async function runWrangler(args, { rootDir = ROOT, env = process.env, acc
       WRANGLER_LOG_PATH: join(directory, 'wrangler.log'), XDG_CONFIG_HOME: configHome,
       XDG_CACHE_HOME: cacheHome, CI: 'true' };
     delete childEnv.AGENT_TOKEN;
-    delete childEnv.INTERNAL_LLMS_KEY;
-    delete childEnv.INTERNAL_LLMS_CIPHERTEXT;
+    for (const name of INTERNAL_LLMS_SECRET_NAMES) delete childEnv[name];
     const binary = join(rootDir, 'services/seo-agent/node_modules/wrangler/bin/wrangler.js');
     await new Promise((done, fail) => {
       const stage = args[0] === 'd1' ? 'remote D1 initialization' : args.includes('--dry-run') ? 'local Worker bundle check' : 'Worker publication';
@@ -328,8 +327,15 @@ export async function deploy({ rootDir = ROOT, env = process.env, fetchImpl = gl
   // Confirm the target before creating resources; never register a new account
   // subdomain, start an interactive login, or switch to an ephemeral account.
   const url = await accountWorkerUrl(client, config);
+  if (internalLlmsSecrets.INTERNAL_LLMS_PROVIDER === 'yubikey-piv'
+      && new URL(internalLlmsSecrets.INTERNAL_LLMS_BRIDGE_URL).origin === new URL(url).origin) {
+    throw new Error('The internal document bridge must use a dedicated origin distinct from the control Worker.');
+  }
   await configure({ rootDir });
-  const childContext = { rootDir, env, accountId: config.accountId };
+  const childEnv = { ...env };
+  delete childEnv.AGENT_TOKEN;
+  for (const name of INTERNAL_LLMS_SECRET_NAMES) delete childEnv[name];
+  const childContext = { rootDir, env: childEnv, accountId: config.accountId };
   progress('Checking the Worker bundle locally.');
   await wrangler(['deploy', '--dry-run'], childContext);
   progress('Looking up or creating the configured D1, KV, and queue resources.');
@@ -340,7 +346,8 @@ export async function deploy({ rootDir = ROOT, env = process.env, fetchImpl = gl
   progress('Publishing the Worker and its configured secrets together.');
   // Wrangler's --secrets-file upload retains remote secret_text/secret_key
   // bindings not listed here. An absent optional pair preserves its current
-  // remote value; supplied values are validated and published atomically.
+  // remote value; supplied groups are validated and published atomically with
+  // an authoritative provider. Opposite-provider remnants are never activated.
   await withSecretsFile({ AGENT_TOKEN: agentToken, ...internalLlmsSecrets }, filename => wrangler(['deploy', '--secrets-file', filename], childContext));
   progress('Verifying authenticated Worker status.');
   await verifyWorker(url, agentToken, fetchImpl, 3);
@@ -368,9 +375,10 @@ status     Read Cloudflare Worker settings and verify authenticated GET /status.
 
 Deploy/status require Node 24+, CLOUDFLARE_API_TOKEN and a distinct AGENT_TOKEN
 from an external secret manager. Never pass tokens as CLI arguments or config.
-Optional INTERNAL_LLMS_KEY and INTERNAL_LLMS_CIPHERTEXT must be supplied together;
-they are validated locally, stored as Worker secrets, and never used as vars.
-Omitting both preserves any existing remote internal-document secrets.
+Internal document settings are optional and stored only as Worker secrets.
+Supply the AES key/ciphertext pair to select software encryption, or select
+INTERNAL_LLMS_PROVIDER=yubikey-piv with the complete independent bridge group.
+Mixing groups is rejected. Omitting every setting retains the remote provider.
 The fixed account, site, and resource names live in config/seo-agent.json.
 Cloudflare API: account-scoped GET/POST /d1/database, /storage/kv/namespaces,
 /queues; GET /workers/subdomain and /workers/scripts/<name>/settings.
@@ -398,7 +406,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     // All expected errors are ours and exclude raw upstream/child responses.
     // Redact again at the final boundary in case a future error contains a value.
     let message = error instanceof Error ? error.message : 'SEO command failed.';
-    for (const value of [process.env.CLOUDFLARE_API_TOKEN, process.env.AGENT_TOKEN, process.env.INTERNAL_LLMS_KEY, process.env.INTERNAL_LLMS_CIPHERTEXT]) {
+    for (const value of [process.env.CLOUDFLARE_API_TOKEN, process.env.AGENT_TOKEN, ...INTERNAL_LLMS_SECRET_NAMES.map(name => process.env[name])]) {
       if (value) message = message.split(value).join('[REDACTED]');
     }
     process.stderr.write(`SEO: ${message}\n`);

@@ -32,7 +32,7 @@ Cloud Build source snapshots may omit `.git`. [cloudbuild.yml](examples/deployme
 
 ## SEO agent
 
-The included Cloudflare Worker is configured for `https://dunesub.de`. It audits sitemap pages, detects SEO and AI-crawler issues, drafts metadata proposals, and provides an authenticated review dashboard. Approved changes can be applied through the site's shared-KV injector.
+The included Cloudflare Worker is configured for `https://www.dunesub.de`. It audits sitemap pages, detects SEO and AI-crawler issues, drafts metadata proposals, and provides an authenticated review dashboard. Approved changes can be applied through the site's shared-KV injector.
 
 Use Node.js 24, then run these commands from the repository root:
 
@@ -53,6 +53,7 @@ The Squarespace connection uses `services/seo-injector`, a route Worker that pre
 - [CMEK organization policy setup](config/README.md)
 - [Active verification workflow](.github/workflows/verify.yml)
 - [SEO service setup, local verification, and deployment](docs/seo-agent.md)
+- [YubiKey PIV hardware key protection and Mac enrollment](docs/yubikey-piv.md)
 - [Node ACL contract](contracts/node_acl_smart_contract.sol)
 
 The active workflow runs repository and SEO service tests, builds and verifies a sync bundle, parses configuration files, generates a DOCX blueprint, compiles the ACL contract, and validates the pinned Terraform provider configuration.

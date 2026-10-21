@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 // Nothing in this smoke check starts a crawl, schedules work, or calls AI.
 const serviceUrl = new URL('../services/seo-agent/', import.meta.url);
 const serviceRequire = createRequire(new URL('package.json', serviceUrl));
-const { Miniflare, Log, LogLevel } = serviceRequire('miniflare');
+const { Miniflare, Log, LogLevel, Response: LocalResponse } = serviceRequire('miniflare');
 const workerPath = fileURLToPath(new URL('dist/index.js', serviceUrl));
 await readFile(workerPath); // Fail before starting workerd if the build is absent.
 
@@ -29,7 +29,12 @@ const privateEnvelope = JSON.stringify({
 });
 const privateKeyBinding = privateKey.toString('base64url');
 privateKey.fill(0);
+const bridgeToken = randomBytes(32).toString('base64url');
+const bridgeUrl = 'https://private-bridge.example.com/internal/llms.txt';
+const bridgeKeyId = 'sha256:' + 'a'.repeat(64);
+const bridgeDocument = '# Synthetic hardware-provider document\n\nMock bridge data only.\n';
 let outboundRequests = 0;
+const bridgeMockDiagnostics = { active: false, calls: 0, stage: 'not configured', failure: '' };
 let runtime;
 
 try {
@@ -67,7 +72,8 @@ try {
     const response = await runtime.dispatchFetch(`${scheme}://seo-agent.local${path}`, {
       method, headers: auth ? { authorization: `Bearer ${token}` } : {},
     });
-    assert.equal(response.status, expectedStatus, `private ${method} ${path} status`);
+    assert.equal(response.status, expectedStatus, `private ${method} ${path} status${bridgeMockDiagnostics.active
+      ? `; local bridge ${JSON.stringify(bridgeMockDiagnostics)}` : ''}`);
     if (path === '/internal/llms.txt') {
       assert.equal(response.headers.get('cache-control'), 'private, no-store');
       assert.equal(response.headers.get('x-robots-tag'), 'noindex, nofollow, noarchive');
@@ -197,10 +203,93 @@ try {
   assert.equal(await privateRequest({ expectedStatus: 503 }), 'Internal document unavailable\n');
   assert.equal(outboundRequests, 0, 'The smoke check must not make outbound requests');
 
-  console.log('SEO Worker runtime smoke passed: authentication, private AES-256-GCM document, HTTPS and method gates, tamper rejection, D1 findings/proposals, approval, rejection, KV overrides, and rollback; zero outbound requests.');
+  // Replace the deny-all service with one local mock of the enrolled bridge.
+  // It accepts one exact HTTPS URL only and never contacts an external host.
+  const bridgeCalls = [];
+  let presentedKeyId = bridgeKeyId;
+  let bridgeStatus = 200;
+  let bridgeLocation;
+  const hardwareOptions = {
+    ...options,
+    bindings: {
+      ...options.bindings, // Keep a valid stale AES envelope to prove no fallback.
+      INTERNAL_LLMS_PROVIDER: 'yubikey-piv',
+      INTERNAL_LLMS_BRIDGE_URL: bridgeUrl,
+      INTERNAL_LLMS_BRIDGE_TOKEN: bridgeToken,
+      INTERNAL_LLMS_BRIDGE_KEY_ID: bridgeKeyId,
+    },
+    // The fetch-service interface preserves the original HTTPS URL; the raw
+    // Node-service interface exposes loopback transport details instead.
+    outboundService: async (incoming) => {
+      bridgeMockDiagnostics.calls += 1;
+      try {
+        bridgeMockDiagnostics.stage = 'URL validation';
+        const url = new URL(incoming.url);
+        assert.equal(url.href, bridgeUrl, 'Only the enrolled mock bridge may be contacted');
+        assert.ok(['GET', 'HEAD'].includes(incoming.method));
+        bridgeMockDiagnostics.stage = 'credential validation';
+        assert.equal(incoming.headers.get('authorization'), `Bearer ${bridgeToken}`);
+        assert.notEqual(incoming.headers.get('authorization'), `Bearer ${token}`, 'Control token must not reach the bridge');
+        bridgeCalls.push({ url: url.href, method: incoming.method });
+        const bytes = Buffer.from(bridgeDocument);
+        bridgeMockDiagnostics.stage = 'response creation';
+        const response = new LocalResponse(incoming.method === 'HEAD' ? null : bytes, {
+          status: bridgeStatus,
+          headers: {
+            'content-type': 'text/plain; charset=utf-8',
+            'content-length': String(incoming.method === 'HEAD' ? 0 : bytes.length),
+            'content-encoding': 'identity',
+            'x-internal-llms-key-id': presentedKeyId,
+            ...(bridgeLocation ? { location: bridgeLocation } : {}),
+          },
+        });
+        bridgeMockDiagnostics.stage = 'response returned';
+        return response;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        bridgeMockDiagnostics.failure = [token, bridgeToken, bridgeDocument]
+          .reduce((value, secret) => value.replaceAll(secret, '[redacted]'), message);
+        throw error;
+      }
+    },
+  };
+  await runtime.setOptions(hardwareOptions);
+  bridgeMockDiagnostics.active = true;
+  bridgeMockDiagnostics.stage = 'configured, no outbound request';
+  assert.equal(await privateRequest(), bridgeDocument);
+  assert.deepEqual(bridgeCalls.map((call) => call.method), ['GET']);
+  await privateRequest({ method: 'HEAD' });
+  assert.deepEqual(bridgeCalls.map((call) => call.method), ['GET', 'HEAD']);
+  await privateRequest({ auth: false, expectedStatus: 401 });
+  await privateRequest({ method: 'HEAD', auth: false, expectedStatus: 401 });
+  assert.equal(bridgeCalls.length, 2, 'Authentication must precede bridge contact');
+
+  presentedKeyId = 'sha256:' + 'b'.repeat(64);
+  assert.equal(await privateRequest({ expectedStatus: 503 }), 'Internal document unavailable\n');
+  assert.equal(bridgeCalls.length, 3, 'A mismatched enrollment must fail without software fallback');
+  presentedKeyId = bridgeKeyId;
+  bridgeStatus = 503;
+  await privateRequest({ method: 'HEAD', expectedStatus: 503 });
+  assert.equal(bridgeCalls.length, 4, 'Missing or unavailable hardware must not report healthy');
+
+  bridgeStatus = 302;
+  bridgeLocation = 'https://credential-sink.example.com/private';
+  assert.equal(await privateRequest({ expectedStatus: 503 }), 'Internal document unavailable\n');
+  assert.equal(bridgeCalls.length, 5);
+  assert.equal(bridgeMockDiagnostics.calls, 5, 'A redirect must not send any request or credential to another URL');
+
+  for (const binding of ['INTERNAL_LLMS_BRIDGE_URL', 'INTERNAL_LLMS_BRIDGE_TOKEN', 'INTERNAL_LLMS_BRIDGE_KEY_ID']) {
+    await runtime.setOptions({ ...hardwareOptions, bindings: { ...hardwareOptions.bindings, [binding]: '' } });
+    assert.equal(await privateRequest({ expectedStatus: 503 }), 'Internal document unavailable\n');
+    assert.equal(bridgeCalls.length, 5, `Missing ${binding} must not trigger bridge contact or AES fallback`);
+  }
+  assert.ok(bridgeCalls.every((call) => call.url === bridgeUrl));
+  assert.equal(outboundRequests, 0, 'The legacy checks must retain their zero-outbound invariant');
+
+  console.log('SEO Worker runtime smoke passed: authentication, private AES-256-GCM and enrolled bridge providers, HTTPS and method gates, tamper, enrollment and redirect rejection, D1 approval and rollback; zero external network requests, five local mock-bridge calls.');
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error);
-  throw new Error([token, privateKeyBinding, privateEnvelope, privateDocument].reduce((text, secret) => text.replaceAll(secret, '[redacted]'), message));
+  throw new Error([token, privateKeyBinding, privateEnvelope, privateDocument, bridgeToken, bridgeDocument].reduce((text, secret) => text.replaceAll(secret, '[redacted]'), message));
 } finally {
   try {
     await runtime?.dispose();
