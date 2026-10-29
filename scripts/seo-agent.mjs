@@ -4,6 +4,7 @@ import { access, chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { INTERNAL_LLMS_SECRET_NAMES, validateInternalLlmsSecrets } from './internal-llms.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const API = 'https://api.cloudflare.com/client/v4';
@@ -14,7 +15,7 @@ const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const HEX_ID = /^[a-f0-9]{32}$/i;
 
 export function validateConfig(input) {
-  const keys = ['siteUrl', 'siteName', 'siteDescription', 'accountId', 'workerName', 'databaseName', 'queueName', 'namespaceTitle', 'sitemapOriginAliases', 'homepagePathAliases'];
+  const keys = ['siteUrl', 'authOrigin', 'siteName', 'siteDescription', 'accountId', 'workerName', 'databaseName', 'queueName', 'namespaceTitle', 'sitemapOriginAliases', 'homepagePathAliases'];
   if (!input || typeof input !== 'object' || Array.isArray(input)
       || Object.keys(input).some(key => !keys.includes(key))) {
     throw new Error('SEO configuration accepts only documented non-secret fields.');
@@ -27,6 +28,17 @@ export function validateConfig(input) {
   try { site = new URL(input.siteUrl); } catch { throw new Error('A valid HTTPS site URL is required.'); }
   if (site.protocol !== 'https:' || site.username || site.password || site.search || site.hash || site.pathname !== '/') {
     throw new Error('SITE_URL must be an HTTPS origin without credentials, a path, query, or fragment.');
+  }
+  if (input.authOrigin !== undefined) {
+    let auth;
+    try { auth = typeof input.authOrigin === 'string' ? new URL(input.authOrigin) : null; } catch { /* Validated below. */ }
+    if (!auth || auth.protocol !== 'https:' || auth.port || auth.username || auth.password
+        || input.authOrigin !== auth.origin || auth.origin === site.origin
+        || auth.hostname.length > 253 || !auth.hostname.includes('.')
+        || !auth.hostname.split('.').every(label => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label))
+        || /^(?:\d+\.){3}\d+$/.test(auth.hostname) || /\.(?:localhost|local|internal)$/.test(auth.hostname)) {
+      throw new Error('authOrigin must be a canonical HTTPS DNS origin, distinct from SITE_URL, without a port, credentials, path, query, or fragment.');
+    }
   }
   if (typeof input.siteName !== 'string' || !input.siteName.trim() || input.siteName.length > 100) {
     throw new Error('A siteName of 1–100 characters is required.');
@@ -97,6 +109,7 @@ export function buildWranglerConfig(config, resources) {
     },
     vars: {
       SITE_URL: config.siteUrl,
+      ...(config.authOrigin !== undefined ? { AUTH_ORIGIN: config.authOrigin } : {}),
       ...(config.sitemapOriginAliases?.length ? { SITEMAP_ORIGIN_ALIASES: config.sitemapOriginAliases.join(',') } : {}),
       ...(config.homepagePathAliases?.length ? { HOMEPAGE_PATH_ALIASES: config.homepagePathAliases.join(',') } : {}),
       SITE_NAME: config.siteName,
@@ -266,6 +279,7 @@ export async function runWrangler(args, { rootDir = ROOT, env = process.env, acc
       WRANGLER_LOG_PATH: join(directory, 'wrangler.log'), XDG_CONFIG_HOME: configHome,
       XDG_CACHE_HOME: cacheHome, CI: 'true' };
     delete childEnv.AGENT_TOKEN;
+    for (const name of INTERNAL_LLMS_SECRET_NAMES) delete childEnv[name];
     const binary = join(rootDir, 'services/seo-agent/node_modules/wrangler/bin/wrangler.js');
     await new Promise((done, fail) => {
       const stage = args[0] === 'd1' ? 'remote D1 initialization' : args.includes('--dry-run') ? 'local Worker bundle check' : 'Worker publication';
@@ -313,6 +327,7 @@ export async function deploy({ rootDir = ROOT, env = process.env, fetchImpl = gl
   // This check deliberately precedes every filesystem mutation and API call.
   const { cloudflareToken, agentToken } = requireCredentials(env);
   const config = await readConfig(rootDir);
+  const internalLlmsSecrets = await validateInternalLlmsSecrets({ env, siteUrl: config.siteUrl });
   try {
     await access(join(rootDir, 'services/seo-agent/node_modules/wrangler/bin/wrangler.js'));
     await access(join(rootDir, 'services/seo-agent/schema.sql'));
@@ -324,8 +339,21 @@ export async function deploy({ rootDir = ROOT, env = process.env, fetchImpl = gl
   // Confirm the target before creating resources; never register a new account
   // subdomain, start an interactive login, or switch to an ephemeral account.
   const url = await accountWorkerUrl(client, config);
+  // This deployment workflow publishes only the discovered workers.dev host.
+  // Bind passkeys to that verified origin before any generated file or remote
+  // mutation; a custom domain requires a separate explicit deployment flow.
+  if (config.authOrigin !== undefined && config.authOrigin !== url) {
+    throw new Error('authOrigin does not match the verified workers.dev control Worker URL; this deployment workflow does not configure custom authentication domains.');
+  }
+  if (internalLlmsSecrets.INTERNAL_LLMS_PROVIDER === 'yubikey-piv'
+      && new URL(internalLlmsSecrets.INTERNAL_LLMS_BRIDGE_URL).origin === new URL(url).origin) {
+    throw new Error('The internal document bridge must use a dedicated origin distinct from the control Worker.');
+  }
   await configure({ rootDir });
-  const childContext = { rootDir, env, accountId: config.accountId };
+  const childEnv = { ...env };
+  delete childEnv.AGENT_TOKEN;
+  for (const name of INTERNAL_LLMS_SECRET_NAMES) delete childEnv[name];
+  const childContext = { rootDir, env: childEnv, accountId: config.accountId };
   progress('Checking the Worker bundle locally.');
   await wrangler(['deploy', '--dry-run'], childContext);
   progress('Looking up or creating the configured D1, KV, and queue resources.');
@@ -333,8 +361,12 @@ export async function deploy({ rootDir = ROOT, env = process.env, fetchImpl = gl
   await configure({ rootDir, resources });
   progress('Initializing the remote D1 schema.');
   await wrangler(['d1', 'execute', 'DB', '--remote', '--file', 'schema.sql'], childContext);
-  progress('Publishing the Worker and its AGENT_TOKEN together.');
-  await withSecretsFile({ AGENT_TOKEN: agentToken }, filename => wrangler(['deploy', '--secrets-file', filename], childContext));
+  progress('Publishing the Worker and its configured secrets together.');
+  // Wrangler's --secrets-file upload retains remote secret_text/secret_key
+  // bindings not listed here. An absent optional pair preserves its current
+  // remote value; supplied groups are validated and published atomically with
+  // an authoritative provider. Opposite-provider remnants are never activated.
+  await withSecretsFile({ AGENT_TOKEN: agentToken, ...internalLlmsSecrets }, filename => wrangler(['deploy', '--secrets-file', filename], childContext));
   progress('Verifying authenticated Worker status.');
   await verifyWorker(url, agentToken, fetchImpl, 3);
   return { url, dashboardUrl: `${url}/dashboard`, siteUrl: config.siteUrl };
@@ -361,6 +393,10 @@ status     Read Cloudflare Worker settings and verify authenticated GET /status.
 
 Deploy/status require Node 24+, CLOUDFLARE_API_TOKEN and a distinct AGENT_TOKEN
 from an external secret manager. Never pass tokens as CLI arguments or config.
+Internal document settings are optional and stored only as Worker secrets.
+Supply the AES key/ciphertext pair to select software encryption, or select
+INTERNAL_LLMS_PROVIDER=yubikey-piv with the complete independent bridge group.
+Mixing groups is rejected. Omitting every setting retains the remote provider.
 The fixed account, site, and resource names live in config/seo-agent.json.
 Cloudflare API: account-scoped GET/POST /d1/database, /storage/kv/namespaces,
 /queues; GET /workers/subdomain and /workers/scripts/<name>/settings.
@@ -388,7 +424,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     // All expected errors are ours and exclude raw upstream/child responses.
     // Redact again at the final boundary in case a future error contains a value.
     let message = error instanceof Error ? error.message : 'SEO command failed.';
-    for (const value of [process.env.CLOUDFLARE_API_TOKEN, process.env.AGENT_TOKEN]) {
+    for (const value of [process.env.CLOUDFLARE_API_TOKEN, process.env.AGENT_TOKEN, ...INTERNAL_LLMS_SECRET_NAMES.map(name => process.env[name])]) {
       if (value) message = message.split(value).join('[REDACTED]');
     }
     process.stderr.write(`SEO: ${message}\n`);

@@ -89,6 +89,37 @@ try {
     await kv.put(`override:${path}`, JSON.stringify({ title, description }));
   }
 
+  // An accidental public override cannot expose this internal-only route. All
+  // methods, even requests carrying credentials, must terminate at the edge.
+  for (const path of ['/llms.txt', '/llms-full.txt', '/internal/llms.txt']) {
+    await kv.put(`override:${path}`, JSON.stringify({ title: 'private-kv-marker', description: 'private-kv-marker' }));
+  }
+  for (const host of ['dunesub.de', 'www.dunesub.de']) {
+    for (const path of ['/llms.txt', '/llms-full.txt', '/internal/llms.txt', '/INTERNAL%2fllms.txt/',
+      '/%6clms%2etxt/', '/Llms-Full.TxT/', '/x/%2e%2e/internal/llms.txt', '/internal%5cllms.txt']) {
+      for (const method of ['GET', 'HEAD', 'POST', 'OPTIONS']) {
+        const denied = await runtime.dispatchFetch(`https://${host}${path}?token=query-secret-marker`, {
+          method, ...(!['GET', 'HEAD'].includes(method) ? { body: 'body-secret-marker' } : {}),
+          headers: {
+            authorization: 'Bearer valid-looking-test-token', origin: 'https://untrusted.example',
+            'access-control-request-headers': 'Authorization', 'if-none-match': '"cached-private-document"',
+          },
+        });
+        assert.equal(denied.status, 404, `${method} ${host}${path}`);
+        assert.equal(await denied.text(), method === 'HEAD' ? '' : 'Not found');
+        assert.equal(denied.headers.get('cache-control'), 'no-store');
+        assert.equal(denied.headers.get('x-robots-tag'), 'noindex, nofollow, noarchive');
+        assert.equal(denied.headers.get('x-content-type-options'), 'nosniff');
+        assert.equal(denied.headers.get('content-type'), 'text/plain; charset=utf-8');
+        for (const [name] of denied.headers) assert.ok(!name.startsWith('access-control-'), name);
+        for (const name of ['etag', 'last-modified', 'location', 'set-cookie', 'www-authenticate']) {
+          assert.equal(denied.headers.get(name), null, name);
+        }
+      }
+    }
+  }
+  assert.equal(calls.length, 0, 'public private-LLM routes must never forward a request or credentials');
+
   const rewritten = await runtime.dispatchFetch('https://dunesub.de/approved?campaign=a%2Bb', { headers: { cookie: 'session=visitor' } });
   const rewrittenHtml = await rewritten.text();
   assert.equal(rewritten.status, 200);
@@ -196,7 +227,7 @@ try {
     assert.deepEqual(Buffer.from(await image.arrayBuffer()), method === 'HEAD' ? Buffer.alloc(0) : png);
   }
   assert.equal(calls.length, 13, 'controlled assets must not contact Squarespace');
-  console.log('SEO injector workerd smoke passed: platform aliases, canonical sitemap, versioned PNG/CSS, compressed metadata, privacy/CSP/cookies, and one-fetch forms.');
+  console.log('SEO injector workerd smoke passed: internal-only LLM boundary, platform aliases, canonical sitemap, versioned PNG/CSS, compressed metadata, privacy/CSP/cookies, and one-fetch forms.');
 } finally {
   await runtime.dispose();
 }

@@ -3,9 +3,9 @@
  * Worker itself. Zero dependencies, zero build step: inline CSS + vanilla JS.
  *
  * Served UNAUTHENTICATED at GET / and GET /dashboard (it contains no secrets —
- * just a login form and client code). The visitor pastes the AGENT_TOKEN once;
- * it is kept in localStorage and sent as `Authorization: Bearer …` on every API
- * call, which is where the real auth lives. Same token as the REST/MCP surface.
+ * just a login form and client code). Configured passkeys and recovery tokens
+ * establish a Secure HttpOnly cookie session. Tokens never enter browser
+ * storage; legacy deployments keep a pasted token only in this page's memory.
  *
  * Layout is a five-tab UI — Overview / Findings / Proposals / Changes /
  * Analytics — driven entirely by the URL hash (#overview … #analytics), so tabs
@@ -112,6 +112,9 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
   .badge[hidden] { display: none; }
   .panel-tab { margin-top: 16px; }
   .panel-tab[hidden] { display: none; }
+  [hidden] { display: none !important; }
+  .auth-message { font-size: 13px; min-height: 20px; margin: 10px 0 0; }
+  .auth-label { display: block; font-size: 13px; margin: 12px 0 5px; }
   .tablewrap { width: 100%; overflow-x: auto; }
   /* Stat cards double as deep links into their tab. */
   a.card { text-decoration: none; color: inherit; display: block; transition: border-color .12s; }
@@ -124,10 +127,13 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
 <div id="login" class="login" style="display:none">
   <div class="card">
     <h1 style="margin:0 0 4px">SEO Agent</h1>
-    <p class="muted" style="margin:0 0 16px">Paste your agent token to continue.</p>
-    <input id="tok" type="password" placeholder="AGENT_TOKEN" autocomplete="off"/>
-    <div class="row"><button class="primary" data-act="login" style="flex:1;justify-content:center">Continue</button></div>
-    <p id="loginerr" class="muted" style="color:var(--bad);font-size:13px;min-height:18px;margin:10px 0 0"></p>
+    <p id="loginhelp" class="muted" style="margin:0 0 16px">Checking sign-in availability…</p>
+    <div class="row"><button id="passkey-login" class="primary" data-act="passkey-login" style="flex:1" disabled>Use a passkey</button></div>
+    <p id="passkey-help" class="muted" style="font-size:12px">Use your device's Face ID, Touch ID, Android authentication, Windows Hello, or a FIDO2 security key such as YubiKey.</p>
+    <label class="auth-label" for="tok">Agent token (recovery or first setup)</label>
+    <input id="tok" type="password" placeholder="AGENT_TOKEN" autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="loginerr"/>
+    <div class="row"><button id="token-login" data-act="login" style="flex:1" disabled>Continue with token</button></div>
+    <p id="loginerr" class="auth-message" style="color:var(--bad)" role="status" aria-live="polite"></p>
   </div>
 </div>
 
@@ -136,9 +142,22 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
     <h1>SEO Agent</h1>
     <span class="site" id="site"></span>
     <span class="spacer"></span>
+    <button id="setup-passkey" class="small" data-act="setup-passkey" hidden>Set up a passkey</button>
     <button id="runbtn" class="small" data-act="run">Run pipeline</button>
-    <button class="small" data-act="logout">Sign out</button>
+    <button id="logout" class="small" data-act="logout">Sign out</button>
   </header>
+
+  <section id="passkey-setup" class="panel" aria-labelledby="passkey-heading" hidden>
+    <h2 id="passkey-heading">Manage passkeys</h2>
+    <p class="muted">Enter the administrator agent token to add or revoke a passkey. Each change requires this token, even when you are already signed in.</p>
+    <label class="auth-label" for="admin-token">Administrator agent token</label>
+    <input id="admin-token" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" aria-describedby="passkey-status"/>
+    <label class="auth-label" for="passkey-label">Passkey name (optional)</label>
+    <input id="passkey-label" maxlength="60" placeholder="For example, my phone or security key"/>
+    <div class="row"><button id="register-passkey" class="primary" data-act="register-passkey">Create a passkey</button><button data-act="close-passkeys">Close</button></div>
+    <p id="passkey-status" class="auth-message" role="status" aria-live="polite"></p>
+    <div id="passkey-list" aria-label="Registered passkeys"></div>
+  </section>
 
   <nav class="tabs" id="tabs" aria-label="Dashboard sections">
     <a class="tab" id="tab-overview" href="#overview">Overview</a>
@@ -184,8 +203,14 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
 
 <script>
 (function () {
-  var KEY = 'seo_agent_token';
-  var token = localStorage.getItem(KEY) || '';
+  // Erase the previous dashboard's persisted credential, including on browsers
+  // that deny storage access. Neither tokens nor sessions are stored here.
+  try { localStorage.removeItem('seo_agent_token'); } catch (_) {}
+  var token = '';
+  var authEnabled = null;
+  var authenticated = false;
+  var authBusy = false;
+  var authEpoch = 0;
 
   // In-memory model of the core payloads, so tab switches and post-action badge
   // updates never have to refetch. analyticsData is the deferred /analytics
@@ -205,32 +230,277 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
     clearTimeout(t._h); t._h = setTimeout(function () { t.classList.remove('show'); }, 2600);
   }
 
-  function api(path, opts) {
-    opts = opts || {};
-    opts.headers = Object.assign({ 'Authorization': 'Bearer ' + token }, opts.headers || {});
+  function request(path, opts, bearer) {
+    opts = Object.assign({}, opts || {});
+    opts.credentials = 'same-origin';
+    opts.cache = 'no-store';
+    opts.headers = Object.assign({}, opts.headers || {});
+    if (bearer) opts.headers.Authorization = 'Bearer ' + bearer;
+    var method = (opts.method || 'GET').toUpperCase();
+    if (method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS') {
+      opts.headers['Content-Type'] = 'application/json';
+      opts.headers['X-SEO-CSRF'] = '1';
+      if (opts.body == null) opts.body = '{}';
+    }
     return fetch(path, opts).then(function (r) {
-      if (r.status === 401) { showLogin('Token rejected.'); throw new Error('unauthorized'); }
-      return r.json().then(function (body) {
-        if (!r.ok) throw new Error(body && body.error ? body.error : ('HTTP ' + r.status));
+      return r.json().catch(function () { return null; }).then(function (body) {
+        if (!r.ok) {
+          var error = new Error(body && body.error ? body.error : ('HTTP ' + r.status));
+          error.status = r.status;
+          throw error;
+        }
         return body;
       });
     });
   }
-
+  function api(path, opts) {
+    if (!authenticated) return Promise.reject(new Error('unauthorized'));
+    var epoch = authEpoch;
+    return request(path, opts, authEnabled === false ? token : '').then(function (result) {
+      if (!authenticated || epoch !== authEpoch) throw new Error('unauthorized');
+      return result;
+    }).catch(function (e) {
+      if (e.status === 401 && epoch === authEpoch) {
+        clearAuthState(authEnabled ? 'Your session expired. Sign in again.' : 'Token rejected.');
+        throw new Error('unauthorized');
+      }
+      throw e;
+    });
+  }
+  function authControls() {
+    el('token-login').disabled = authBusy || authEnabled === null;
+    el('passkey-login').disabled = authBusy || authEnabled !== true;
+    el('passkey-login').hidden = authEnabled === false;
+    el('passkey-help').hidden = authEnabled === false;
+    el('setup-passkey').hidden = authEnabled !== true;
+    el('setup-passkey').disabled = authBusy;
+    el('register-passkey').disabled = authBusy;
+    el('logout').disabled = authBusy;
+  }
+  function setAuthBusy(value) { authBusy = value; authControls(); }
   function showLogin(msg) {
     el('app').style.display = 'none';
     el('login').style.display = '';
     el('loginerr').textContent = msg || '';
+    el('passkey-setup').hidden = true;
+    el('admin-token').value = '';
+    authControls();
   }
-  function doLogin() {
-    token = el('tok').value.trim();
-    if (!token) return;
-    localStorage.setItem(KEY, token);
+  function enterApp() {
+    authEpoch++;
+    resetDashboard();
+    authenticated = true;
     el('login').style.display = 'none';
     el('app').style.display = '';
+    el('loginerr').textContent = '';
     boot();
+    el('tab-' + resolveHash()).focus();
   }
-  function logout() { localStorage.removeItem(KEY); token = ''; analyticsData = null; showLogin(''); }
+  function authError(e) {
+    if (e.name === 'NotAllowedError' || e.name === 'AbortError') return 'Passkey request was canceled or timed out. Try again.';
+    if (e.name === 'NotSupportedError') return 'This browser or authenticator does not support this passkey request. Try another browser or your agent token.';
+    if (e.name === 'InvalidStateError') return 'This passkey is already registered. Try another passkey.';
+    if (e.name === 'SecurityError') return 'Passkeys require a secure page on the configured sign-in domain.';
+    if (e.status === 401) return 'Agent token rejected or sign-in expired. Try again.';
+    if (e.status === 503) return 'Sign-in is unavailable. Try again later.';
+    return e.message || 'Sign-in is unavailable. Try again.';
+  }
+  function doLogin() {
+    if (authBusy || authEnabled === null) return;
+    var recoveryToken = el('tok').value.trim();
+    el('tok').value = '';
+    if (!recoveryToken) { el('loginerr').textContent = 'Enter your agent token.'; return; }
+    if (authEnabled === false) {
+      token = recoveryToken; recoveryToken = '';
+      enterApp();
+      return;
+    }
+    setAuthBusy(true);
+    el('loginerr').textContent = 'Signing in…';
+    request('/auth/token', { method: 'POST' }, recoveryToken).then(function (result) {
+      if (!result || result.authenticated !== true) throw new Error('Sign-in is unavailable. Try again.');
+      enterApp();
+    }).catch(function (e) { el('loginerr').textContent = authError(e); }).finally(function () {
+      recoveryToken = '';
+      setAuthBusy(false);
+    });
+  }
+  function resetDashboard() {
+    analyticsData = null; analyticsPending = false; lastDraft = null;
+    state = { status: null, proposals: [], findings: [], changes: [], dismissed: [] };
+    ['cards', 'lastrun', 'site', 'findings', 'proposals', 'changes', 'analytics', 'drout'].forEach(function (id) {
+      el(id).textContent = '';
+    });
+    resetRunBtn();
+  }
+  function clearAuthState(message) {
+    token = ''; authenticated = false; authEpoch++;
+    resetDashboard();
+    el('tok').value = ''; el('admin-token').value = ''; el('passkey-list').innerHTML = '';
+    showLogin(message || '');
+    el('tok').focus();
+  }
+  function logout() {
+    if (authBusy) return;
+    if (authEnabled === false) { clearAuthState(); return; }
+    setAuthBusy(true);
+    request('/auth/logout', { method: 'POST' }).then(function () {
+      clearAuthState();
+    }).catch(function () { toast('Sign-out is unavailable. Try again.'); }).finally(function () { setAuthBusy(false); });
+  }
+
+  // These conversions also support WebAuthn implementations without the newer
+  // parseCreationOptionsFromJSON / parseRequestOptionsFromJSON / toJSON APIs.
+  function fromBase64url(value) {
+    var raw = value.replace(/-/g, '+').replace(/_/g, '/');
+    while (raw.length % 4) raw += '=';
+    var binary = atob(raw), bytes = new Uint8Array(binary.length);
+    for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes.buffer;
+  }
+  function toBase64url(value) {
+    var bytes = ArrayBuffer.isView(value) ? new Uint8Array(value.buffer, value.byteOffset, value.byteLength) : new Uint8Array(value);
+    var binary = '';
+    for (var i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    return btoa(binary).replace(/=/g, '').split('+').join('-').split('/').join('_');
+  }
+  function credentialDescriptors(list) {
+    return list.map(function (item) { return Object.assign({}, item, { id: fromBase64url(item.id) }); });
+  }
+  function publicKeyOptions(options, registration) {
+    var result = Object.assign({}, options);
+    result.challenge = fromBase64url(options.challenge);
+    if (registration) {
+      result.user = Object.assign({}, options.user, { id: fromBase64url(options.user.id) });
+      if (options.excludeCredentials) result.excludeCredentials = credentialDescriptors(options.excludeCredentials);
+      result.authenticatorSelection = Object.assign({}, options.authenticatorSelection || {}, { userVerification: 'required' });
+      delete result.authenticatorSelection.authenticatorAttachment;
+    } else {
+      if (options.allowCredentials) result.allowCredentials = credentialDescriptors(options.allowCredentials);
+      result.userVerification = 'required';
+    }
+    return result;
+  }
+  function credentialJSON(credential) {
+    if (!credential) throw new Error('Passkey request was canceled. Try again.');
+    var response = credential.response;
+    var result = { id: credential.id, rawId: toBase64url(credential.rawId), type: credential.type,
+      response: { clientDataJSON: toBase64url(response.clientDataJSON) },
+      clientExtensionResults: credential.getClientExtensionResults ? credential.getClientExtensionResults() : {} };
+    if (credential.authenticatorAttachment) result.authenticatorAttachment = credential.authenticatorAttachment;
+    if (response.attestationObject) {
+      result.response.attestationObject = toBase64url(response.attestationObject);
+      if (response.getTransports) result.response.transports = response.getTransports();
+    } else {
+      result.response.authenticatorData = toBase64url(response.authenticatorData);
+      result.response.signature = toBase64url(response.signature);
+      result.response.userHandle = response.userHandle == null ? null : toBase64url(response.userHandle);
+    }
+    return result;
+  }
+  function supportsPasskeys(registration) {
+    if (!window.isSecureContext || !window.PublicKeyCredential || !navigator.credentials ||
+        typeof navigator.credentials[registration ? 'create' : 'get'] !== 'function') {
+      throw new Error('Passkeys are unavailable in this browser. Use a current browser on HTTPS, or continue with your agent token.');
+    }
+  }
+  function doPasskeyLogin() {
+    if (authBusy || authEnabled !== true) return;
+    try { supportsPasskeys(false); } catch (e) { el('loginerr').textContent = authError(e); return; }
+    setAuthBusy(true);
+    el('loginerr').textContent = 'Follow your device or security key prompt…';
+    var challengeId;
+    request('/auth/login/options', { method: 'POST' }).then(function (result) {
+      challengeId = result.challengeId;
+      return navigator.credentials.get({ publicKey: publicKeyOptions(result.options, false) });
+    }).then(function (credential) {
+      return request('/auth/login/verify', { method: 'POST', body: JSON.stringify({ challengeId: challengeId, response: credentialJSON(credential) }) });
+    }).then(function (result) {
+      if (!result || result.authenticated !== true) throw new Error('Sign-in is unavailable. Try again.');
+      enterApp();
+    }).catch(function (e) { el('loginerr').textContent = authError(e); }).finally(function () { setAuthBusy(false); });
+  }
+  function refreshPasskeys() {
+    el('passkey-list').textContent = 'Loading registered passkeys…';
+    return api('/auth/passkeys').then(function (result) {
+      var list = result && result.passkeys;
+      if (!Array.isArray(list)) throw new Error('Passkey list is unavailable.');
+      el('passkey-list').innerHTML = list.length ? list.map(function (item) {
+        return '<div class="row"><span style="flex:1">' + esc(item.label || 'Passkey') +
+          ' <span class="muted">' + esc((item.createdAt || '').slice(0, 10)) + '</span></span>' +
+          '<button class="small bad" data-act="revoke-passkey" data-id="' + esc(item.id) + '">Revoke</button></div>';
+      }).join('') : '<p class="muted">No passkeys registered yet.</p>';
+    }).catch(function (e) {
+      if (e.message !== 'unauthorized') el('passkey-list').textContent = 'Passkey list is unavailable. Try again later.';
+    });
+  }
+  function openPasskeys() {
+    if (authBusy || authEnabled !== true || !authenticated) return;
+    el('passkey-setup').hidden = false;
+    el('passkey-status').textContent = '';
+    el('admin-token').focus();
+    refreshPasskeys();
+  }
+  function closePasskeys() {
+    if (authBusy) return;
+    el('admin-token').value = '';
+    el('passkey-setup').hidden = true;
+    el('setup-passkey').focus();
+  }
+  function registerPasskey() {
+    if (authBusy || authEnabled !== true || !authenticated) return;
+    var recoveryToken = el('admin-token').value.trim();
+    el('admin-token').value = '';
+    if (!recoveryToken) { el('passkey-status').textContent = 'Enter the administrator agent token to create a passkey.'; return; }
+    try { supportsPasskeys(true); } catch (e) { recoveryToken = ''; el('passkey-status').textContent = authError(e); return; }
+    var label = el('passkey-label').value.trim() || 'Passkey';
+    if (label.length > 60) { recoveryToken = ''; el('passkey-status').textContent = 'Use a passkey name of 60 characters or fewer.'; return; }
+    setAuthBusy(true);
+    el('passkey-status').textContent = 'Follow your device or security key prompt…';
+    var challengeId;
+    request('/auth/register/options', { method: 'POST', body: JSON.stringify({ label: label }) }, recoveryToken).then(function (result) {
+      challengeId = result.challengeId;
+      return navigator.credentials.create({ publicKey: publicKeyOptions(result.options, true) });
+    }).then(function (credential) {
+      return request('/auth/register/verify', { method: 'POST', body: JSON.stringify({ challengeId: challengeId, response: credentialJSON(credential) }) }, recoveryToken);
+    }).then(function (result) {
+      if (!result || result.verified !== true) throw new Error('Passkey setup is unavailable. Try again.');
+      el('passkey-label').value = '';
+      el('passkey-status').textContent = 'Passkey created. You can use it the next time you sign in.';
+      refreshPasskeys();
+    }).catch(function (e) { el('passkey-status').textContent = authError(e); }).finally(function () {
+      recoveryToken = ''; el('admin-token').value = '';
+      setAuthBusy(false);
+    });
+  }
+  function revokePasskey(id) {
+    if (authBusy || authEnabled !== true || !authenticated) return;
+    var recoveryToken = el('admin-token').value.trim();
+    el('admin-token').value = '';
+    if (!recoveryToken) { el('passkey-status').textContent = 'Enter the administrator agent token to revoke a passkey.'; return; }
+    setAuthBusy(true);
+    request('/auth/passkeys/' + encodeURIComponent(id), { method: 'DELETE' }, recoveryToken).then(function () {
+      el('passkey-status').textContent = 'Passkey revoked.';
+      refreshPasskeys();
+    }).catch(function (e) { el('passkey-status').textContent = authError(e); }).finally(function () {
+      recoveryToken = ''; el('admin-token').value = '';
+      setAuthBusy(false);
+    });
+  }
+  function discoverSession() {
+    showLogin('');
+    request('/auth/session').then(function (result) {
+      if (!result || typeof result.enabled !== 'boolean' || typeof result.authenticated !== 'boolean') throw new Error('unavailable');
+      authEnabled = result.enabled;
+      el('loginhelp').textContent = authEnabled ? 'Sign in with your passkey, or use your agent token for recovery and first setup.' : 'Paste your agent token to continue. It stays in memory until you close this page.';
+      authControls();
+      if (authEnabled && result.authenticated) enterApp();
+    }).catch(function () {
+      authEnabled = null;
+      el('loginhelp').textContent = 'Sign-in is unavailable.';
+      showLogin('Unable to check sign-in availability. Reload to try again.');
+    });
+  }
 
   function num(x) { return x == null ? '0' : String(x); }
 
@@ -266,7 +536,7 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
     // need and cache it.
     if (key === 'analytics' || key === 'changes') ensureAnalytics();
   }
-  function onHashChange() { activateTab(resolveHash()); }
+  function onHashChange() { if (authenticated) activateTab(resolveHash()); }
 
   function setBadge(id, n) {
     var b = el(id);
@@ -526,11 +796,16 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
   // hashchange listener, so it needs nothing here.
   document.addEventListener('click', function (e) {
     var t = e.target.closest ? e.target.closest('[data-act]') : null;
-    if (!t) return;
+    if (!t || t.disabled) return;
     var act = t.getAttribute('data-act');
     var id = t.getAttribute('data-id');
     if (act === 'login') doLogin();
+    else if (act === 'passkey-login') doPasskeyLogin();
     else if (act === 'logout') logout();
+    else if (act === 'setup-passkey') openPasskeys();
+    else if (act === 'close-passkeys') closePasskeys();
+    else if (act === 'register-passkey') registerPasskey();
+    else if (act === 'revoke-passkey') revokePasskey(id);
     else if (act === 'run') runPipeline();
     else if (act === 'dryrun') dryRun();
     else if (act === 'promote') promote();
@@ -726,8 +1001,7 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
     load();
   }
 
-  if (!token) showLogin('');
-  else { el('login').style.display = 'none'; el('app').style.display = ''; boot(); }
+  discoverSession();
 })();
 </script>
 </body>

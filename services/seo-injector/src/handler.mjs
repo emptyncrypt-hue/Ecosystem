@@ -13,10 +13,40 @@ import {
 
 const PUBLIC_HOSTS = new Set(['dunesub.de', 'www.dunesub.de']);
 const HOMEPAGE_PATHS = new Set(['/', '/home', '/home/']);
+const PRIVATE_LLM_PATHS = new Set(['/llms.txt', '/llms-full.txt', '/internal/llms.txt']);
+const MAX_BOUNDARY_PATH_LENGTH = 8_192;
 const SQUARESPACE_ALIAS = 'sepia-carnation-yj5e.squarespace.com';
 export const MAX_HTML_BYTES = 2 * 1024 * 1024;
 export const MAX_SOCIAL_BYTES = 2 * 1024 * 1024;
 const PROCESSING_TIMEOUT_MS = 2_000;
+
+function isPrivateLlmsPath(pathname) {
+  // Decode once with a bounded input. The URL parser has already normalized
+  // ordinary dot segments; normalize decoded separators/dots as well without
+  // interpreting decoded query/fragment characters as a different URL.
+  if (pathname.length > MAX_BOUNDARY_PATH_LENGTH) return false;
+  let decoded;
+  try { decoded = decodeURIComponent(pathname); } catch { return false; }
+  const segments = [];
+  for (const segment of decoded.replaceAll('\\', '/').split('/')) {
+    if (!segment || segment === '.') continue;
+    if (segment === '..') segments.pop();
+    else segments.push(segment.toLowerCase());
+  }
+  return PRIVATE_LLM_PATHS.has(`/${segments.join('/')}`);
+}
+
+function privateLlmsNotFound(request) {
+  // This edge has no private-document binding or decryption key. Never forward
+  // credentials to Squarespace, inspect a request body, or consult shared KV.
+  return new Response(request.method === 'HEAD' ? null : 'Not found', {
+    status: 404,
+    headers: {
+      'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store',
+      'x-robots-tag': 'noindex, nofollow, noarchive', 'x-content-type-options': 'nosniff',
+    },
+  });
+}
 
 /** Read a clone with a limit; cancellation must not wait for its untouched tee. */
 async function readBounded(response, signal) {
@@ -242,6 +272,11 @@ export async function handleRequest(request, env, {
   if (!['http:', 'https:'].includes(url.protocol) || !PUBLIC_HOSTS.has(url.host) || url.username || url.password) {
     return new Response('Not found', { status: 404 });
   }
+
+  // Private llms.txt is available only on the authenticated control Worker.
+  // Public routes deny every method, including authenticated requests, before
+  // any origin fetch or public override/asset lookup can occur.
+  if (isPrivateLlmsPath(url.pathname)) return privateLlmsNotFound(request);
 
   // These two controlled public assets are independent of Squarespace content.
   // Other methods and paths still reach the origin exactly once.

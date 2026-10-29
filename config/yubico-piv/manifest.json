@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "retrievedOn": "2026-10-19",
+  "source": "https://developers.yubico.com/PIV/Introduction/PIV_attestation.html",
+  "files": {
+    "yubico-ca-1.pem": {
+      "url": "https://developers.yubico.com/PKI/yubico-ca-1.pem",
+      "sha256": "9271d914d48d05487666703586aea27d9a69ad0c8ddf8c2fc4c8734a04285887",
+      "role": "root"
+    },
+    "yubico-piv-ca-1.pem": {
+      "url": "https://developers.yubico.com/PKI/yubico-piv-ca-1.pem",
+      "sha256": "6234f33d5f652109d265b391f2898b8ba92f62df406b684db18363f50d7c9129",
+      "role": "root"
+    },
+    "yubico-intermediate.pem": {
+      "url": "https://developers.yubico.com/PKI/yubico-intermediate.pem",
+      "sha256": "ec0172fe38838e3de174aae4e058bb44920be47cebd8d658a0fba1634b82aee1",
+      "role": "intermediates"
+    }
+  }
+}

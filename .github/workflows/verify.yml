@@ -82,6 +82,21 @@ jobs:
           npm run seo:injector:build
           npm run seo:injector:smoke
 
+  yubikey-piv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install host-provider dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpcsclite-dev swig
+          python -m pip install -r requirements-yubikey.txt
+      - name: Test attestation, envelope encryption and private host bridge
+        run: python -m unittest discover -s test -p 'test_yubikey*.py' -v
+
   terraform:
     runs-on: ubuntu-latest
     steps:
